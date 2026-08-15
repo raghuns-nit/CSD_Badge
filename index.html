@@ -11,6 +11,8 @@
         .valid { color: #27ae60; font-weight: bold; font-size: 18px; }
         .invalid { color: #c0392b; font-weight: bold; font-size: 18px; }
         video { width: 100%; border-radius: 8px; }
+        .nav-link { display: block; margin-top: 20px; font-size: 13px; color: #666; text-decoration: none; }
+        .nav-link:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -19,13 +21,15 @@
     <h2>Team ID Verification</h2>
     <video id="preview" autoplay playsinline></video>
     <div id="result" style="margin-top: 15px; font-size: 15px;">Point camera at team member QR code...</div>
+    
+    <a href="admin.html" class="nav-link">⚙️ Switch to Admin Issuer Portal</a>
 </div>
 
 <script>
-    // PASTE YOUR GENERATED PUBLIC KEY JWK HERE:
+    // PASTE YOUR PUBLIC KEY JWK HERE
     const PUBLIC_KEY_JWK = {
         kty: "RSA",
-        n: "wN0RV4SDE4O0X70SKt1yf453sncN-wrrA5bEtCJqx9xXdkKPRNIOwXPTy9A5FBW6PBXvRyH6H9x3FcuNTcM4ePMfCGHY0JttkQpYCSAYHqWScQ35l87_44GkorHXqUi8YPJqDCbSNwJn_RE3Nn5Ii2GIvK3wNtIp8_sOiRgjWbVRVE_ztjxrrgfqPPph1fMxFhJkgalnGuOZpcoLDKTp7Ak9cHhDfU1RrfjiNHMoO8QtgfIdo_9neq_usHryUmcRjQH4QKFE4neqc4Izg3RqR1MCqWaF1GM7YDvsfMoAHOi7o3TeKar19sM79Koc7sCsSuisoFYyBfZZriM3YM9qKw",
+        n: "PASTE_YOUR_PUBLIC_N_STRING_HERE",
         e: "AQAB"
     };
 
