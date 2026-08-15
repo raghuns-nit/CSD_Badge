@@ -3,35 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Team ID Issuer with Photo</title>
+    <title>Secure Team ID Issuer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body { font-family: sans-serif; padding: 15px; background: #f4f4f9; margin: 0; display: flex; flex-direction: column; align-items: center; }
-        .container { background: white; width: 100%; max-width: 450px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; margin-bottom: 20px; }
+        .container { background: white; width: 100%; max-width: 450px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; margin-bottom: 20px; display: none; }
         input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
         button { background: #007bff; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 10px; }
         button:active { background: #0056b3; }
         .file-box { background: #e9ecef; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
         
-        /* Badge UI Design */
+        #cameraSection { display: none; text-align: center; margin-bottom: 15px; background: #000; padding: 10px; border-radius: 6px; }
+        #cameraStream { width: 100%; max-height: 250px; border-radius: 4px; }
+
         .badge { background: white; width: 100%; max-width: 350px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); text-align: center; overflow: hidden; box-sizing: border-box; display: none; margin: auto; }
         .badge-header { padding: 15px; color: white; font-weight: bold; font-size: 18px; }
         .badge-body { padding: 20px; display: flex; flex-direction: column; align-items: center; }
         
-        /* Photo Styling */
         .member-photo { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid #ddd; margin-bottom: 12px; background: #eee; }
 
-        /* Role-based Theme Colors */
         .theme-Staff { background-color: #004080; }
         .theme-Intern { background-color: #e67e22; }
         .theme-Volunteer { background-color: #27ae60; }
         .theme-Admin { background-color: #8e44ad; }
+        .nav-link { display: block; margin-top: 15px; font-size: 13px; color: #007bff; text-decoration: none; text-align: center; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Secure ID Issuer with Photo</h2>
+<div class="container" id="mainContainer">
+    <h2>Secure ID Issuer</h2>
     
     <div class="file-box">
         <label><strong>1. Upload Private Key JSON:</strong></label>
@@ -39,13 +40,13 @@
     </div>
 
     <div class="file-box">
-        <label><strong>2. Upload members.csv:</strong></label>
+        <label><strong>2. Upload members.csv (Optional):</strong></label>
         <input type="file" id="csvFile" accept=".csv" onchange="loadCSV(event)">
     </div>
 
-    <label>Select Member from Sheet:</label>
+    <label>Select from CSV Sheet:</label>
     <select id="csvSelect" onchange="fillFromCSV()">
-        <option value="">-- Choose Member --</option>
+        <option value="">-- Manual Entry or Choose Member --</option>
     </select>
     
     <hr style="margin: 15px 0; border:0; border-top:1px solid #eee;">
@@ -59,9 +60,19 @@
     </select>
     <input type="email" id="email" placeholder="Email Address" required>
     <input type="text" id="phone" placeholder="Phone Number" required>
-    <input type="text" id="photoUrl" placeholder="Photo Direct URL">
+    <input type="hidden" id="photoData" value="">
+    
+    <button type="button" onclick="startCamera()" style="background: #6c757d;">📸 Capture Live Photo</button>
+
+    <div id="cameraSection">
+        <video id="cameraStream" autoplay playsinline></video>
+        <button type="button" onclick="takeSnapshot()" style="background: #28a745;">Snap Photo</button>
+    </div>
+
     <input type="number" id="validDays" placeholder="Validity in Days" value="90">
     <button onclick="generateID()">Generate Secure Badge</button>
+
+    <a href="index.html" class="nav-link">← Back to Verifier Scanner</a>
 </div>
 
 <div class="badge" id="badgeContainer">
@@ -69,7 +80,7 @@
         <span id="bRoleTitle">STAFF ID</span>
     </div>
     <div class="badge-body">
-        <img id="bPhoto" class="member-photo" src="" alt="Member Photo" onerror="this.src='https://via.placeholder.com/90?text=No+Photo'">
+        <img id="bPhoto" class="member-photo" src="" alt="Member Photo">
         <h3 id="bName" style="margin: 5px 0; font-size: 22px; color: #333;"></h3>
         <p id="bContact" style="font-size: 13px; color: #666; margin: 5px 0;"></p>
         <div id="qrcode" style="margin: 15px auto; display: flex; justify-content: center;"></div>
@@ -78,8 +89,39 @@
 </div>
 
 <script>
+    // LIST OF ALLOWED ADMIN PASSWORD HASHES (SHA-256)
+    // Add multiple hashes here to support multiple admin passwords.
+    // Example hashes below correspond to password strings (update them as needed).
+    const ALLOWED_PASSWORD_HASHES = [
+        "008c70392e3abfbd0fa47bbc2ed96aa99bd49e159727fcba0f2e6abeb3a9d601", // Hash for "Password123"
+        "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"  // Hash for "admin123"
+    ];
+
+    // Authenticate Admin on Load via Password Prompt
+    window.onload = async function() {
+        const password = prompt("Enter Admin Password:");
+        if (!password) {
+            alert("Access denied.");
+            window.location.href = "index.html";
+            return;
+        }
+
+        const msgBuffer = new TextEncoder().encode(password);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+        if (ALLOWED_PASSWORD_HASHES.includes(hashHex)) {
+            document.getElementById('mainContainer').style.display = 'block';
+        } else {
+            alert("Incorrect password!");
+            window.location.href = "index.html";
+        }
+    };
+
     let loadedPrivateKeyJWK = null;
     let csvDataList = [];
+    let mediaStream = null;
 
     function loadPrivateKey(event) {
         const file = event.target.files[0];
@@ -109,22 +151,13 @@
     function parseCSV(text) {
         const lines = text.split('\n');
         const select = document.getElementById('csvSelect');
-        select.innerHTML = '<option value="">-- Choose Member --</option>';
+        select.innerHTML = '<option value="">-- Manual Entry or Choose Member --</option>';
         csvDataList = [];
 
-        // Expecting CSV format: Name, Role, Email, Phone, ValidityDays, PhotoURL
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
             const cols = lines[i].split(',').map(c => c.trim());
-            csvDataList.push({ 
-                name: cols[0], 
-                role: cols[1], 
-                email: cols[2], 
-                phone: cols[3], 
-                days: cols[4], 
-                photo: cols[5] 
-            });
-            
+            csvDataList.push({ name: cols[0], role: cols[1], email: cols[2], phone: cols[3], days: cols[4], photo: cols[5] });
             const opt = document.createElement('option');
             opt.value = csvDataList.length - 1;
             opt.innerText = `${cols[0]} (${cols[1]})`;
@@ -140,8 +173,40 @@
         document.getElementById('role').value = member.role || 'Staff';
         document.getElementById('email').value = member.email || '';
         document.getElementById('phone').value = member.phone || '';
-        document.getElementById('photoUrl').value = member.photo || '';
+        document.getElementById('photoData').value = member.photo || '';
+        document.getElementById('bPhoto').src = member.photo || 'https://via.placeholder.com/90?text=No+Photo';
         if(member.days) document.getElementById('validDays').value = member.days;
+    }
+
+    async function startCamera() {
+        const cameraSection = document.getElementById('cameraSection');
+        const video = document.getElementById('cameraStream');
+        cameraSection.style.display = 'block';
+        try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+            video.srcObject = mediaStream;
+        } catch (err) {
+            alert("Could not access front camera.");
+        }
+    }
+
+    function takeSnapshot() {
+        const video = document.getElementById('cameraStream');
+        const canvas = document.createElement('canvas');
+        canvas.width = 150;
+        canvas.height = 150;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        
+        document.getElementById('photoData').value = dataUrl;
+        document.getElementById('bPhoto').src = dataUrl;
+
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+        }
+        document.getElementById('cameraSection').style.display = 'none';
+        alert("Photo captured successfully!");
     }
 
     async function generateID() {
@@ -154,7 +219,7 @@
         const role = document.getElementById('role').value;
         const email = document.getElementById('email').value;
         const phone = document.getElementById('phone').value;
-        const photoUrl = document.getElementById('photoUrl').value;
+        const photoUrl = document.getElementById('photoData').value || 'https://via.placeholder.com/90?text=No+Photo';
         const validDays = parseInt(document.getElementById('validDays').value) || 90;
 
         if(!name || !email) {
@@ -163,7 +228,7 @@
         }
 
         const header = { alg: "RS256", typ: "JWT" };
-        const payload = { name, role, email, phone, exp: Date.now() + (validDays * 86400000) };
+        const payload = { name, role, email, phone, photo: photoUrl, exp: Date.now() + (validDays * 86400000) };
 
         const headerB64 = btoa(JSON.stringify(header));
         const payloadB64 = btoa(JSON.stringify(payload));
@@ -183,16 +248,14 @@
 
             const signedJwt = `${unsignedToken}.${signatureB64}`;
 
-            // Apply Theme Colors and Details to Badge Preview
             const headerEl = document.getElementById('badgeHeader');
             headerEl.className = `badge-header theme-${role}`;
             document.getElementById('bRoleTitle').innerText = `${role.toUpperCase()} ID`;
             document.getElementById('bName').innerText = name;
             document.getElementById('bContact').innerText = `${email} | ${phone}`;
             document.getElementById('bExpiry').innerText = `Valid for ${validDays} days`;
-            document.getElementById('bPhoto').src = photoUrl || 'https://via.placeholder.com/90?text=No+Photo';
+            document.getElementById('bPhoto').src = photoUrl;
 
-            // Render QR Code
             document.getElementById('qrcode').innerHTML = "";
             new QRCode(document.getElementById("qrcode"), {
                 text: signedJwt,
