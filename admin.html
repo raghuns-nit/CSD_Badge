@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Team ID Issuer</title>
+    <title>Secure Team ID Issuer with PDF Export</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body { font-family: sans-serif; padding: 15px; background: #f4f4f9; margin: 0; display: flex; flex-direction: column; align-items: center; }
         .container { background: white; width: 100%; max-width: 450px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; margin-bottom: 20px; display: none; }
@@ -84,20 +85,18 @@
         <h3 id="bName" style="margin: 5px 0; font-size: 22px; color: #333;"></h3>
         <p id="bContact" style="font-size: 13px; color: #666; margin: 5px 0;"></p>
         <div id="qrcode" style="margin: 15px auto; display: flex; justify-content: center;"></div>
-        <p id="bExpiry" style="font-size: 11px; color: #888; margin-bottom: 0;"></p>
+        <p id="bExpiry" style="font-size: 11px; color: #888; margin-bottom: 15px;"></p>
+        
+        <button onclick="downloadBadgePDF()" style="background: #28a745; margin-top: 5px;">📥 Download Badge PDF</button>
     </div>
 </div>
 
 <script>
-    // LIST OF ALLOWED ADMIN PASSWORD HASHES (SHA-256)
-    // Add multiple hashes here to support multiple admin passwords.
-    // Example hashes below correspond to password strings (update them as needed).
+    // Allowed Admin Password Hashes (SHA-256)
     const ALLOWED_PASSWORD_HASHES = [
-        "008c70392e3abfbd0fa47bbc2ed96aa99bd49e159727fcba0f2e6abeb3a9d601", // Hash for "Password123"
-        "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"  // Hash for "admin123"
+        "ef92b778bafe771e89245b89ecbc08a44a4e166c066591168d819bf8fb7ab0bdf" // Hash for "admin123"
     ];
 
-    // Authenticate Admin on Load via Password Prompt
     window.onload = async function() {
         const password = prompt("Enter Admin Password:");
         if (!password) {
@@ -122,6 +121,7 @@
     let loadedPrivateKeyJWK = null;
     let csvDataList = [];
     let mediaStream = null;
+    let currentSignedJwt = ""; // Store signed token for PDF generation
 
     function loadPrivateKey(event) {
         const file = event.target.files[0];
@@ -246,7 +246,7 @@
             const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
                 .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-            const signedJwt = `${unsignedToken}.${signatureB64}`;
+            currentSignedJwt = `${unsignedToken}.${signatureB64}`;
 
             const headerEl = document.getElementById('badgeHeader');
             headerEl.className = `badge-header theme-${role}`;
@@ -258,7 +258,7 @@
 
             document.getElementById('qrcode').innerHTML = "";
             new QRCode(document.getElementById("qrcode"), {
-                text: signedJwt,
+                text: currentSignedJwt,
                 width: 170,
                 height: 170
             });
@@ -267,6 +267,63 @@
         } catch (err) {
             alert("Signing failed. Ensure you uploaded the correct private key file.");
         }
+    }
+
+    // PDF Download Generation Logic using jsPDF
+    function downloadBadgePDF() {
+        const { jsPDF } = window.jspdf;
+        // Standard credit card / badge sizing (Width: 85mm, Height: 110mm portrait)
+        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [85, 110] });
+
+        const name = document.getElementById('name').value;
+        const role = document.getElementById('role').value;
+        const email = document.getElementById('email').value;
+        const phone = document.getElementById('phone').value;
+        const validDays = document.getElementById('validDays').value;
+
+        // Header Background color mapping
+        let headerColor = [0, 64, 128]; // Staff Blue
+        if (role === "Intern") headerColor = [230, 126, 34];
+        if (role === "Volunteer") headerColor = [39, 174, 96];
+        if (role === "Admin") headerColor = [142, 68, 173];
+
+        // Draw Header Box
+        doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
+        doc.rect(0, 0, 85, 20, "F");
+
+        // Header Title text
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text(`${role.toUpperCase()} ID`, 42.5, 13, { align: "center" });
+
+        // Member Name
+        doc.setTextColor(44, 62, 80);
+        doc.setFontSize(16);
+        doc.text(name, 42.5, 45, { align: "center" });
+
+        // Contact Info
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(100, 100, 100);
+        doc.text(email, 42.5, 52, { align: "center" });
+        doc.text(phone, 42.5, 57, { align: "center" });
+
+        // Extract QR code image data from the rendered canvas
+        const qrCanvas = document.querySelector('#qrcode canvas');
+        if (qrCanvas) {
+            const qrImageURL = qrCanvas.toDataURL("image/png");
+            // Add QR code image onto PDF layout
+            doc.addImage(qrImageURL, 'PNG', 22.5, 62, 40, 40);
+        }
+
+        // Validity text
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Valid for ${validDays} days`, 42.5, 106, { align: "center" });
+
+        // Save PDF file
+        doc.save(`${name.replace(/\s+/g, '_')}_ID_Badge.pdf`);
     }
 </script>
 
