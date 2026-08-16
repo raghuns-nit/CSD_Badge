@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Team ID Verifier</title>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
     <style>
         body { font-family: -apple-system, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; box-sizing: border-box; }
         .header { background: #1a365d; color: white; padding: 12px; font-size: 16px; font-weight: bold; }
@@ -21,7 +26,7 @@
         .qr-target-box { position: absolute; width: 160px; height: 160px; border: 2px dashed rgba(255, 255, 255, 0.9); border-radius: 12px; pointer-events: none; }
 
         .scan-controls { display: flex; gap: 6px; width: 100%; margin-top: 8px; }
-        .scan-btn { flex: 1; padding: 8px; border: none; border-radius: 6px; background: #2b6cb0; color: white; font-weight: bold; cursor: pointer; font-size: 12px; }
+        .scan-btn { flex: 1; padding: 8px; border: none; border-radius: 6px; background: #2b6cb0; color: white; font-weight: bold; cursor: pointer; font-size: 11px; text-align: center; }
         .file-upload { display: none; }
         
         #result { margin-top: 8px; padding: 10px; border-radius: 8px; background: white; width: 100%; box-sizing: border-box; min-height: 80px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 12px; text-align: left; overflow-y: auto; max-height: 120px; }
@@ -48,13 +53,13 @@
         
         <div class="scan-controls" id="controlsBar">
             <button class="scan-btn" onclick="captureManualFrame()">📸 Read Frame</button>
-            <label class="scan-btn" style="background: #4a5568; text-align: center; cursor: pointer; line-height: 20px;">
-                📁 Upload Photo
-                <input type="file" class="file-upload" accept="image/*" onchange="handleImageUpload(event)">
+            <label class="scan-btn" style="background: #4a5568; line-height: 20px;">
+                📁 Upload Img/PDF
+                <input type="file" class="file-upload" accept="image/*,application/pdf" onchange="handleFileUpload(event)">
             </label>
         </div>
 
-        <div id="result">Align badge QR code inside the box...</div>
+        <div id="result">Scan QR code or upload Badge (Image/PDF)...</div>
         <div class="back-btn" onclick="stopScanner()">← Back to Menu</div>
     </div>
 </div>
@@ -98,29 +103,51 @@
     function tick() {
         if (!scanning) return;
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            processImage(video);
+            processImageSource(video);
         }
         if (scanning) requestAnimationFrame(tick);
     }
 
     function captureManualFrame() {
-        processImage(video, true);
+        processImageSource(video, true);
     }
 
-    function handleImageUpload(event) {
+    // Handles both Image and PDF Uploads
+    async function handleFileUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const img = new Image();
-            img.onload = () => processImage(img, true);
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
+
+        if (file.type === "application/pdf") {
+            resultDiv.innerHTML = "Parsing PDF badge...";
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const page = await pdf.getPage(1);
+                const viewport = page.getViewport({ scale: 2.0 }); // High-res render for QR scanning
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext('2d');
+                
+                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                processImageSource(canvas, true);
+            } catch (err) {
+                resultDiv.innerHTML = `<p class="invalid">❌ Failed to read PDF badge.</p>`;
+            }
+        } else {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = () => processImageSource(img, true);
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
     }
 
-    function processImage(source, isManual = false) {
-        if (!scanning) return;
+    function processImageSource(source, isManual = false) {
+        if (!isManual && !scanning) return;
         const canvas = document.createElement('canvas');
         canvas.width = source.videoWidth || source.width;
         canvas.height = source.videoHeight || source.height;
@@ -135,7 +162,7 @@
             document.getElementById('controlsBar').style.display = 'none';
             verifyToken(code.data);
         } else if (isManual) {
-            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found. Try uploading a clearer photo.</p>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found in file/frame.</p>`;
         }
     }
 
