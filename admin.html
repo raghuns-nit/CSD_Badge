@@ -15,16 +15,15 @@
         button:active { background: #0056b3; }
         
         #dashboard { display: none; height: 100%; width: 100%; max-width: 520px; flex-direction: column; gap: 5px; }
-        .scrollable-inventory { overflow-y: auto; max-height: 95px; border: 1px solid #eee; font-size: 10px; }
+        .scrollable-inventory { overflow-y: auto; max-height: 110px; border: 1px solid #eee; font-size: 10px; }
         table { width: 100%; border-collapse: collapse; }
         th, td { border-bottom: 1px solid #ddd; padding: 3px; text-align: left; }
         th { background-color: #f8f9fa; position: sticky; top: 0; }
         
-        /* Large Live Camera Viewfinder with Face Guide Overlay */
-        #cameraSection { display: none; text-align: center; background: #000; padding: 4px; border-radius: 6px; position: relative; overflow: hidden; }
-        .camera-wrapper { position: relative; width: 100%; height: 180px; display: flex; justify-content: center; align-items: center; }
+        #cameraSection { display: none; text-align: center; background: #000; padding: 4px; border-radius: 6px; }
+        .camera-wrapper { position: relative; width: 100%; height: 160px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
         #cameraStream { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
-        .face-guide-circle { position: absolute; width: 110px; height: 110px; border: 2px dashed rgba(255, 255, 255, 0.8); border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.4); }
+        .face-guide-circle { position: absolute; width: 90px; height: 90px; border: 2px dashed rgba(255, 255, 255, 0.9); border-radius: 50%; pointer-events: none; }
 
         .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 6px; border-radius: 6px; margin-top: 3px; }
         .nav-link { color: #007bff; text-decoration: none; font-size: 10px; text-align: center; display: block; margin-top: 2px; }
@@ -47,11 +46,11 @@
 </div>
 
 <div id="dashboard">
-    <div class="card" style="max-height: 130px;">
-        <h3 id="inventoryTitle">📋 Live Inventory Syncing...</h3>
+    <div class="card" style="max-height: 140px;">
+        <h3 id="inventoryTitle">📋 Live Inventory (Click PDF to Download)</h3>
         <div class="scrollable-inventory">
             <table id="inventoryTable">
-                <thead><tr><th>Name</th><th>Role</th><th>Expiry</th><th>Status</th></tr></thead>
+                <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Action</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -189,7 +188,7 @@
             const data = await res.json();
             githubData.sha = data.sha;
             githubData.content = decodeURIComponent(escape(atob(data.content)));
-            document.getElementById('inventoryTitle').innerText = "📋 Live Inventory";
+            document.getElementById('inventoryTitle').innerText = "📋 Live Inventory (Click PDF to Download)";
             renderInventory();
             populateDropdown();
         } catch (e) {
@@ -205,13 +204,20 @@
         
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
-            // Safe split accounting for quoted Base64 strings containing commas
             const cols = parseCSVLine(lines[i]);
             if(cols.length < 5) continue;
             count++;
             const isExpired = Date.now() > new Date(cols[4]).getTime();
             const status = isExpired ? '<span style="color:red">Expired</span>' : '<span style="color:green">Active</span>';
-            tbody.innerHTML += `<tr><td>${cols[0]}</td><td>${cols[1]}</td><td>${cols[4]}</td><td>${status}</td></tr>`;
+            
+            // Add inventory row with direct PDF download action button
+            tbody.innerHTML += `
+                <tr>
+                    <td>${cols[0]}</td>
+                    <td>${cols[1]}</td>
+                    <td>${status}</td>
+                    <td><button onclick="downloadRowPDF(${i})" style="padding:2px 5px; background:#28a745; font-size:9px;">📥 PDF</button></td>
+                </tr>`;
         }
         if(count === 0) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No badges found.</td></tr>`;
     }
@@ -231,7 +237,6 @@
         }
     }
 
-    // Robust CSV line parser handling quoted data fields
     function parseCSVLine(text) {
         let result = [];
         let cur = '';
@@ -297,7 +302,7 @@
                 const canvas = document.createElement('canvas');
                 canvas.width = 150; canvas.height = 150;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
                 document.getElementById('photoData').value = canvas.toDataURL('image/jpeg', 0.7);
                 alert("Image converted & loaded!");
             };
@@ -383,7 +388,76 @@
         }
     }
 
+    async function downloadRowPDF(lineIdx) {
+        const lines = githubData.content.split('\n');
+        const cols = parseCSVLine(lines[lineIdx]);
+        const name = cols[0];
+        const role = cols[1];
+        const email = cols[2];
+        const phone = cols[3];
+        const expiryStr = cols[4];
+        const photoDataUrl = (cols[5] || '').replace(/^"|"$/g, '');
+
+        // Generate signed JWT for the row on-the-fly
+        const expTimestamp = new Date(expiryStr + "T23:59:59").getTime();
+        const headerB64 = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+        const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, photo: photoDataUrl, exp: expTimestamp }));
+        const unsignedToken = `${headerB64}.${payloadB64}`;
+        
+        const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", loadedPrivateKeyJWK, new TextEncoder().encode(unsignedToken));
+        const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const rowJwt = `${unsignedToken}.${signatureB64}`;
+
+        // Render temporary hidden container to compile QR code image
+        const tempDiv = document.createElement('div');
+        document.body.appendChild(tempDiv);
+        new QRCode(tempDiv, { text: rowJwt, width: 150, height: 150 });
+        const qrCanvas = tempDiv.querySelector('canvas');
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [85, 110] });
+
+        let headerColor = [0, 64, 128];
+        if (role === "Intern") headerColor = [230, 126, 34];
+        if (role === "Volunteer") headerColor = [39, 174, 96];
+        if (role === "Admin") headerColor = [142, 68, 173];
+
+        doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
+        doc.rect(0, 0, 85, 18, "F");
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(13);
+        doc.text(`${role.toUpperCase()} ID`, 42.5, 11, { align: "center" });
+
+        if (photoDataUrl && photoDataUrl.startsWith('data:image')) {
+            try { doc.addImage(photoDataUrl, 'JPEG', 32.5, 21, 20, 20); } catch (e) {}
+        }
+
+        doc.setTextColor(44, 62, 80);
+        doc.setFontSize(14);
+        doc.text(name, 42.5, 46, { align: "center" });
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text(email, 42.5, 52, { align: "center" });
+        doc.text(phone, 42.5, 57, { align: "center" });
+
+        if (qrCanvas) {
+            doc.addImage(qrCanvas.toDataURL("image/png"), 'PNG', 24.5, 62, 36, 36);
+        }
+
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Expires: ${expiryStr}`, 42.5, 103, { align: "center" });
+
+        doc.save(`${name.replace(/\s+/g, '_')}_Badge.pdf`);
+        document.body.removeChild(tempDiv);
+    }
+
     function downloadBadgePDF() {
+        // Triggers PDF download for the currently previewed badge
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [85, 110] });
 
