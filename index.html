@@ -16,10 +16,9 @@
         
         #scannerView { display: none; width: 100%; max-width: 380px; flex-direction: column; align-items: center; }
         
-        /* Camera container with QR targeting frame overlay */
-        .camera-container { position: relative; width: 100%; max-height: 32vh; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        .camera-container { position: relative; width: 100%; height: 260px; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         video { width: 100%; height: 100%; object-fit: cover; }
-        .qr-target-box { position: absolute; width: 180px; height: 180px; border: 2px dashed rgba(255, 255, 255, 0.8); border-radius: 12px; pointer-events: none; box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.4); }
+        .qr-target-box { position: absolute; width: 160px; height: 160px; border: 2px dashed rgba(255, 255, 255, 0.9); border-radius: 12px; pointer-events: none; }
 
         .scan-controls { display: flex; gap: 6px; width: 100%; margin-top: 8px; }
         .scan-btn { flex: 1; padding: 8px; border: none; border-radius: 6px; background: #2b6cb0; color: white; font-weight: bold; cursor: pointer; font-size: 12px; }
@@ -50,12 +49,12 @@
         <div class="scan-controls" id="controlsBar">
             <button class="scan-btn" onclick="captureManualFrame()">📸 Read Frame</button>
             <label class="scan-btn" style="background: #4a5568; text-align: center; cursor: pointer; line-height: 20px;">
-                📁 Upload Image
+                📁 Upload Photo
                 <input type="file" class="file-upload" accept="image/*" onchange="handleImageUpload(event)">
             </label>
         </div>
 
-        <div id="result">Align badge QR code inside the dashed box...</div>
+        <div id="result">Align badge QR code inside the box...</div>
         <div class="back-btn" onclick="stopScanner()">← Back to Menu</div>
     </div>
 </div>
@@ -77,7 +76,7 @@
         document.getElementById('menuView').style.display = 'none';
         document.getElementById('scannerView').style.display = 'flex';
         document.getElementById('controlsBar').style.display = 'flex';
-        resultDiv.innerHTML = "Align QR code inside box...";
+        resultDiv.innerHTML = "Scanning for QR code...";
         scanning = true;
 
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(s => {
