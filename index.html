@@ -7,7 +7,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
-        // Configure PDF.js worker
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
     <style>
@@ -23,7 +22,6 @@
         
         .camera-container { position: relative; width: 100%; height: 260px; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         video { width: 100%; height: 100%; object-fit: cover; }
-        .qr-target-box { position: absolute; width: 160px; height: 160px; border: 2px dashed rgba(255, 255, 255, 0.9); border-radius: 12px; pointer-events: none; }
 
         .scan-controls { display: flex; gap: 6px; width: 100%; margin-top: 8px; }
         .scan-btn { flex: 1; padding: 8px; border: none; border-radius: 6px; background: #2b6cb0; color: white; font-weight: bold; cursor: pointer; font-size: 11px; text-align: center; }
@@ -48,7 +46,6 @@
     <div id="scannerView">
         <div class="camera-container">
             <video id="preview" autoplay playsinline></video>
-            <div class="qr-target-box"></div>
         </div>
         
         <div class="scan-controls" id="controlsBar">
@@ -59,13 +56,12 @@
             </label>
         </div>
 
-        <div id="result">Scan QR code or upload Badge (Image/PDF)...</div>
+        <div id="result">Scan QR code or upload Badge file...</div>
         <div class="back-btn" onclick="stopScanner()">← Back to Menu</div>
     </div>
 </div>
 
 <script>
-    // PASTE YOUR PUBLIC KEY JWK HERE
     const PUBLIC_KEY_JWK = {
         kty: "RSA",
         n: "zzLlxb6HgJinHJuPTd1WGGpahZ9gkpxVwo2QPtB4W7TAJahYAPwzJOp7ZutxgSJyMhpzRrsAwyXSCYLGcUzYmMFZ6CQTiB5PSRwAfwsZYJzjE6HYc0rs-_U73LzI940hUKfYuXXdTohhT7Y4amS8sNppFLsaKg015XEnXryx8u0uI825jJyhfm9LakXnJmyQPnBAQbTnMihd1xqRzfTs0fvdDjxHhdtc5HPGOLLvo4iC48O33-wO1AzKbB3brJRraDR304dBMRywWdqzw0HxCz9s8wgbh1mEcy4tahuzzkgpoeFwvu0Zh6pMy4Gz1jVaftDsoCPCD6PRsh_nbq0UZQ",
@@ -112,7 +108,6 @@
         processImageSource(video, true);
     }
 
-    // Handles both Image and PDF Uploads
     async function handleFileUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -123,7 +118,7 @@
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 const page = await pdf.getPage(1);
-                const viewport = page.getViewport({ scale: 2.0 }); // High-res render for QR scanning
+                const viewport = page.getViewport({ scale: 2.0 });
                 
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
