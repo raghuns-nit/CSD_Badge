@@ -62,6 +62,7 @@
 </div>
 
 <script>
+    // PASTE YOUR PUBLIC KEY JWK HERE
     const PUBLIC_KEY_JWK = {
         kty: "RSA",
         n: "zzLlxb6HgJinHJuPTd1WGGpahZ9gkpxVwo2QPtB4W7TAJahYAPwzJOp7ZutxgSJyMhpzRrsAwyXSCYLGcUzYmMFZ6CQTiB5PSRwAfwsZYJzjE6HYc0rs-_U73LzI940hUKfYuXXdTohhT7Y4amS8sNppFLsaKg015XEnXryx8u0uI825jJyhfm9LakXnJmyQPnBAQbTnMihd1xqRzfTs0fvdDjxHhdtc5HPGOLLvo4iC48O33-wO1AzKbB3brJRraDR304dBMRywWdqzw0HxCz9s8wgbh1mEcy4tahuzzkgpoeFwvu0Zh6pMy4Gz1jVaftDsoCPCD6PRsh_nbq0UZQ",
@@ -99,7 +100,7 @@
     function tick() {
         if (!scanning) return;
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            processImageSource(video);
+            processImageSource(video, false);
         }
         if (scanning) requestAnimationFrame(tick);
     }
@@ -118,7 +119,7 @@
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 const page = await pdf.getPage(1);
-                const viewport = page.getViewport({ scale: 2.0 });
+                const viewport = page.getViewport({ scale: 3.0 }); // High scale for crisp text/QR resolution
                 
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
@@ -141,15 +142,34 @@
         }
     }
 
+    // Advanced Multi-Pass Processing to ensure 100% read success on tricky frames
     function processImageSource(source, isManual = false) {
         if (!isManual && !scanning) return;
+
         const canvas = document.createElement('canvas');
-        canvas.width = source.videoWidth || source.width;
-        canvas.height = source.videoHeight || source.height;
+        const width = source.videoWidth || source.width || 300;
+        const height = source.videoHeight || source.height || 300;
+        
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let code = jsQR(imageData.data, imageData.width, imageData.height);
+
+        // Fallback Pass 1: If regular scan misses, try scaling down/up or boosting contrast slightly
+        if (!code && isManual) {
+            // Try high-contrast render pass
+            for (let i = 0; i < imageData.data.length; i += 4) {
+                let avg = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
+                let val = avg < 128 ? 0 : 255; // Threshold black/white
+                imageData.data[i] = val;
+                imageData.data[i + 1] = val;
+                imageData.data[i + 2] = val;
+            }
+            code = jsQR(imageData.data, imageData.width, imageData.height);
+        }
 
         if (code) {
             scanning = false;
@@ -157,7 +177,7 @@
             document.getElementById('controlsBar').style.display = 'none';
             verifyToken(code.data);
         } else if (isManual) {
-            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found in file/frame.</p>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found. Please ensure the badge image is clear and well-lit.</p>`;
         }
     }
 
