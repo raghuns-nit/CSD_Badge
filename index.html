@@ -19,7 +19,6 @@
         .big-btn.admin { background: #4a5568; }
         
         #scannerView { display: none; width: 100%; max-width: 380px; flex-direction: column; align-items: center; }
-        
         .camera-container { width: 100%; height: 260px; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         video { width: 100%; height: 100%; object-fit: cover; }
 
@@ -113,62 +112,65 @@
         const file = event.target.files[0];
         if (!file) return;
 
-        if (file.type === "application/pdf") {
-            resultDiv.innerHTML = "Parsing PDF badge...";
-            try {
+        resultDiv.innerHTML = "Processing uploaded file...";
+        try {
+            if (file.type === "application/pdf") {
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 const page = await pdf.getPage(1);
-                const viewport = page.getViewport({ scale: 3.0 }); // High scale for crisp text/QR resolution
+                const viewport = page.getViewport({ scale: 2.0 });
                 
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
                 const ctx = canvas.getContext('2d');
-                
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-                processImageSource(canvas, true);
-            } catch (err) {
-                resultDiv.innerHTML = `<p class="invalid">❌ Failed to read PDF badge.</p>`;
+                processCanvasForQR(canvas);
+            } else {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width || 800;
+                        canvas.height = img.height || 800;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        processCanvasForQR(canvas);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
             }
-        } else {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = new Image();
-                img.onload = () => processImageSource(img, true);
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
+        } catch (err) {
+            resultDiv.innerHTML = `<p class="invalid">❌ Error processing file.</p>`;
         }
     }
 
-    // Advanced Multi-Pass Processing to ensure 100% read success on tricky frames
     function processImageSource(source, isManual = false) {
         if (!isManual && !scanning) return;
-
         const canvas = document.createElement('canvas');
-        const width = source.videoWidth || source.width || 300;
-        const height = source.videoHeight || source.height || 300;
-        
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = source.videoWidth || source.width || 400;
+        canvas.height = source.videoHeight || source.height || 400;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        processCanvasForQR(canvas, isManual);
+    }
 
-        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    function processCanvasForQR(canvas, isManual = true) {
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         let code = jsQR(imageData.data, imageData.width, imageData.height);
 
-        // Fallback Pass 1: If regular scan misses, try scaling down/up or boosting contrast slightly
-        if (!code && isManual) {
-            // Try high-contrast render pass
-            for (let i = 0; i < imageData.data.length; i += 4) {
-                let avg = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
-                let val = avg < 128 ? 0 : 255; // Threshold black/white
-                imageData.data[i] = val;
-                imageData.data[i + 1] = val;
-                imageData.data[i + 2] = val;
-            }
-            code = jsQR(imageData.data, imageData.width, imageData.height);
+        // Fallback scan with downscaling if initial high-res fails
+        if (!code && canvas.width > 800) {
+            const smallCanvas = document.createElement('canvas');
+            smallCanvas.width = 600;
+            smallCanvas.height = Math.floor(canvas.height * (600 / canvas.width));
+            const sCtx = smallCanvas.getContext('2d');
+            sCtx.drawImage(canvas, 0, 0, smallCanvas.width, smallCanvas.height);
+            const sData = sCtx.getImageData(0, 0, smallCanvas.width, smallCanvas.height);
+            code = jsQR(sData.data, sData.width, sData.height);
         }
 
         if (code) {
@@ -177,7 +179,7 @@
             document.getElementById('controlsBar').style.display = 'none';
             verifyToken(code.data);
         } else if (isManual) {
-            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found. Please ensure the badge image is clear and well-lit.</p>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found in uploaded file. Ensure it's a valid badge PDF/image.</p>`;
         }
     }
 
