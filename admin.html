@@ -7,44 +7,47 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #f4f4f9; margin: 0; padding: 6px; height: 100vh; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; overflow: hidden; }
-        .card { background: white; width: 100%; max-width: 550px; padding: 10px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); box-sizing: border-box; margin-bottom: 6px; display: flex; flex-direction: column; }
-        h3 { margin: 0 0 4px 0; font-size: 14px; color: #333; }
-        input, select, button { width: 100%; padding: 7px; margin: 3px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 12px; }
+        body { font-family: -apple-system, sans-serif; background: #f4f4f9; margin: 0; padding: 5px; height: 100vh; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; overflow: hidden; }
+        .card { background: white; width: 100%; max-width: 520px; padding: 10px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); box-sizing: border-box; margin-bottom: 5px; display: flex; flex-direction: column; }
+        h3 { margin: 0 0 3px 0; font-size: 13px; color: #333; }
+        input, select, button { width: 100%; padding: 6px; margin: 2px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 11px; }
         button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
         button:active { background: #0056b3; }
         
-        #dashboard { display: none; height: 100%; width: 100%; max-width: 550px; flex-direction: column; gap: 6px; }
-        .scrollable-inventory { overflow-y: auto; max-height: 110px; border: 1px solid #eee; font-size: 11px; }
+        #dashboard { display: none; height: 100%; width: 100%; max-width: 520px; flex-direction: column; gap: 5px; }
+        .scrollable-inventory { overflow-y: auto; max-height: 95px; border: 1px solid #eee; font-size: 10px; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border-bottom: 1px solid #ddd; padding: 4px; text-align: left; }
+        th, td { border-bottom: 1px solid #ddd; padding: 3px; text-align: left; }
         th { background-color: #f8f9fa; position: sticky; top: 0; }
         
-        #cameraSection { display: none; text-align: center; background: #000; padding: 4px; border-radius: 4px; }
-        #cameraStream { width: 100%; max-height: 120px; border-radius: 4px; object-fit: cover; }
+        /* Large Live Camera Viewfinder with Face Guide Overlay */
+        #cameraSection { display: none; text-align: center; background: #000; padding: 4px; border-radius: 6px; position: relative; overflow: hidden; }
+        .camera-wrapper { position: relative; width: 100%; height: 180px; display: flex; justify-content: center; align-items: center; }
+        #cameraStream { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
+        .face-guide-circle { position: absolute; width: 110px; height: 110px; border: 2px dashed rgba(255, 255, 255, 0.8); border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.4); }
 
-        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 8px; border-radius: 6px; margin-top: 4px; }
-        .nav-link { color: #007bff; text-decoration: none; font-size: 11px; text-align: center; display: block; margin-top: 2px; }
+        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 6px; border-radius: 6px; margin-top: 3px; }
+        .nav-link { color: #007bff; text-decoration: none; font-size: 10px; text-align: center; display: block; margin-top: 2px; }
     </style>
 </head>
 <body>
 
-<div class="card" id="setupScreen" style="margin-top: 20px;">
+<div class="card" id="setupScreen" style="margin-top: 15px;">
     <h3>Admin Setup & GitHub Sync</h3>
     <input type="password" id="adminPass" placeholder="Admin Password">
-    <hr style="width:100%; border:0; border-top:1px solid #eee; margin:6px 0;">
-    <p style="font-size: 11px; color: #666; margin:0 0 3px 0;">GitHub Private Repo Settings:</p>
+    <hr style="width:100%; border:0; border-top:1px solid #eee; margin:5px 0;">
+    <p style="font-size: 10px; color: #666; margin:0 0 2px 0;">GitHub Private Repo Settings:</p>
     <input type="text" id="ghOwner" placeholder="GitHub Username">
     <input type="text" id="ghRepo" placeholder="Private Repo Name" value="Badge_Details">
     <input type="password" id="ghToken" placeholder="GitHub Personal Access Token (PAT)">
-    <p style="font-size: 11px; color: #666; margin:4px 0 2px 0;">Select Private Key JSON File:</p>
+    <p style="font-size: 10px; color: #666; margin:3px 0 2px 0;">Select Private Key JSON File:</p>
     <input type="file" id="privateKeyFile" accept=".json" onchange="loadPrivateKey(event)">
     <button onclick="loginAndFetch()">Login & Sync Inventory</button>
     <a href="index.html" class="nav-link">← Back to Verifier</a>
 </div>
 
 <div id="dashboard">
-    <div class="card" style="max-height: 150px;">
+    <div class="card" style="max-height: 130px;">
         <h3 id="inventoryTitle">📋 Live Inventory Syncing...</h3>
         <div class="scrollable-inventory">
             <table id="inventoryTable">
@@ -76,30 +79,33 @@
         
         <div style="display: flex; gap: 4px; align-items: center;">
             <input type="hidden" id="photoData" value="">
-            <button type="button" onclick="startCamera()" style="background: #6c757d; padding: 6px;">📸 Live Snapshot</button>
-            <input type="file" accept="image/*" onchange="handleImageFile(event)" style="padding: 2px;">
+            <button type="button" onclick="startCamera()" style="background: #6c757d; padding: 5px;">📸 Live Snapshot</button>
+            <input type="file" accept="image/*" onchange="handleImageFile(event)" style="padding: 1px;">
         </div>
 
         <div id="cameraSection">
-            <video id="cameraStream" autoplay playsinline></video>
-            <button type="button" onclick="takeSnapshot()" style="background: #28a745; padding: 4px;">Snap & Save Photo</button>
+            <div class="camera-wrapper">
+                <video id="cameraStream" autoplay playsinline></video>
+                <div class="face-guide-circle"></div>
+            </div>
+            <button type="button" onclick="takeSnapshot()" style="background: #28a745; padding: 5px; margin-top: 3px;">Snap & Save Photo</button>
         </div>
         
         <div style="display: flex; align-items: center; gap: 4px;">
-            <span style="font-size: 11px; font-weight: bold; color: #555;">Valid Until:</span>
+            <span style="font-size: 10px; font-weight: bold; color: #555;">Valid Until:</span>
             <input type="date" id="expiryDate" required>
         </div>
         
-        <button onclick="generateAndSaveID()" id="issueBtn" style="background: #2b6cb0; padding: 9px;">Generate, Save & Auto-Sync</button>
+        <button onclick="generateAndSaveID()" id="issueBtn" style="background: #2b6cb0; padding: 8px;">Generate, Save & Auto-Sync</button>
         <a href="index.html" class="nav-link" onclick="logout()">← Logout / Back to Verifier</a>
 
         <div class="badge-preview" id="badgeContainer">
             <h3 style="margin-bottom: 2px;" id="bName"></h3>
-            <p style="font-size:11px; color: #666; margin: 0 0 4px 0;" id="bRole"></p>
-            <img id="bPhoto" src="" style="width:50px; height:50px; border-radius:50%; object-fit:cover; display:none; margin: 0 auto 4px; border: 2px solid #ccc;">
-            <div id="qrcode" style="display:flex; justify-content:center;"></div>
-            <p style="font-size:10px; color:green; margin:2px 0;">✅ Synced to Private GitHub Repo (`Badge_Details`)</p>
-            <button onclick="downloadBadgePDF()" style="background: #28a745; padding: 6px; margin-top: 4px;">📥 Download Badge PDF</button>
+            <p style="font-size: 10px; color: #666; margin: 0 0 3px 0;" id="bRole"></p>
+            <img id="bPhoto" src="" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover; display: none; margin: 0 auto 3px; border: 2px solid #ccc;">
+            <div id="qrcode" style="display: flex; justify-content: center;"></div>
+            <p style="font-size: 9px; color: green; margin: 2px 0;">✅ Synced to GitHub (`Badge_Details`)</p>
+            <button onclick="downloadBadgePDF()" style="background: #28a745; padding: 5px; margin-top: 2px;">📥 Download Badge PDF</button>
         </div>
     </div>
 </div>
@@ -199,9 +205,10 @@
         
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
-            count++;
-            const cols = lines[i].split(',');
+            // Safe split accounting for quoted Base64 strings containing commas
+            const cols = parseCSVLine(lines[i]);
             if(cols.length < 5) continue;
+            count++;
             const isExpired = Date.now() > new Date(cols[4]).getTime();
             const status = isExpired ? '<span style="color:red">Expired</span>' : '<span style="color:green">Active</span>';
             tbody.innerHTML += `<tr><td>${cols[0]}</td><td>${cols[1]}</td><td>${cols[4]}</td><td>${status}</td></tr>`;
@@ -215,7 +222,7 @@
         const lines = githubData.content.split('\n');
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
-            const cols = lines[i].split(',');
+            const cols = parseCSVLine(lines[i]);
             if(cols.length < 5) continue;
             const opt = document.createElement('option');
             opt.value = i;
@@ -224,17 +231,37 @@
         }
     }
 
+    // Robust CSV line parser handling quoted data fields
+    function parseCSVLine(text) {
+        let result = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < text.length; i++) {
+            let char = text[i];
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                result.push(cur.trim());
+                cur = '';
+            } else {
+                cur += char;
+            }
+        }
+        result.push(cur.trim());
+        return result;
+    }
+
     function fillFromCSV() {
         const idx = document.getElementById('csvSelect').value;
         if (idx === "") return;
         const lines = githubData.content.split('\n');
-        const cols = lines[idx].split(',');
+        const cols = parseCSVLine(lines[idx]);
         document.getElementById('name').value = cols[0] || '';
         document.getElementById('role').value = cols[1] || 'Staff';
         document.getElementById('email').value = cols[2] || '';
         document.getElementById('phone').value = cols[3] || '';
         document.getElementById('expiryDate').value = cols[4] || '';
-        const photoVal = cols.slice(5).join(',').trim();
+        const photoVal = cols[5] || '';
         document.getElementById('photoData').value = photoVal.replace(/^"|"$/g, '') || '';
     }
 
@@ -249,7 +276,7 @@
     function takeSnapshot() {
         const video = document.getElementById('cameraStream');
         const canvas = document.createElement('canvas');
-        canvas.width = 120; canvas.height = 120;
+        canvas.width = 150; canvas.height = 150;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
@@ -257,7 +284,7 @@
         document.getElementById('photoData').value = dataUrl;
         if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
         document.getElementById('cameraSection').style.display = 'none';
-        alert("Photo captured!");
+        alert("Photo captured successfully!");
     }
 
     function handleImageFile(event) {
@@ -268,11 +295,11 @@
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                canvas.width = 120; canvas.height = 120;
+                canvas.width = 150; canvas.height = 150;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 document.getElementById('photoData').value = canvas.toDataURL('image/jpeg', 0.7);
-                alert("Image converted!");
+                alert("Image converted & loaded!");
             };
             img.src = e.target.result;
         };
@@ -310,11 +337,9 @@
             
             let lines = githubData.content.split('\n');
             if (editIndex !== "") {
-                // UPDATE EXISTING RECORD (EDIT)
                 lines[editIndex] = newRow;
                 githubData.content = lines.join('\n');
             } else {
-                // APPEND NEW RECORD
                 githubData.content = githubData.content.replace(/\n$/, "") + "\n" + newRow;
             }
 
@@ -347,7 +372,7 @@
             if(photoBase64) { photoImg.src = photoBase64; photoImg.style.display = 'block'; } else { photoImg.style.display = 'none'; }
 
             document.getElementById('qrcode').innerHTML = "";
-            new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 110, height: 110 });
+            new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 100, height: 100 });
             document.getElementById('badgeContainer').style.display = "block";
 
             alert("Badge successfully saved and synced to GitHub!");
