@@ -24,7 +24,7 @@
         .camera-wrapper { width: 100%; height: 160px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
         #cameraStream { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
 
-        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 6px; border-radius: 6px; margin-top: 3px; }
+        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 8px; border-radius: 6px; margin-top: 3px; background: #fff; }
         .nav-link { color: #007bff; text-decoration: none; font-size: 10px; text-align: center; display: block; margin-top: 2px; }
     </style>
 </head>
@@ -46,10 +46,10 @@
 
 <div id="dashboard">
     <div class="card" style="max-height: 140px;">
-        <h3 id="inventoryTitle">📋 Live Inventory (Click PDF to Download)</h3>
+        <h3 id="inventoryTitle">📋 Live Inventory (View or Download Badges)</h3>
         <div class="scrollable-inventory">
             <table id="inventoryTable">
-                <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Action</th></tr></thead>
+                <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -102,7 +102,7 @@
             <img id="bPhoto" src="" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover; display: none; margin: 0 auto 3px; border: 2px solid #ccc;">
             <div id="qrcode" style="display: flex; justify-content: center;"></div>
             <p style="font-size: 9px; color: green; margin: 2px 0;">✅ Synced to GitHub (`Badge_Details`)</p>
-            <button onclick="downloadBadgePDF()" style="background: #28a745; padding: 5px; margin-top: 2px;">📥 Download Badge PDF</button>
+            <button onclick="downloadBadgePDF()" style="background: #28a745; padding: 6px; margin-top: 3px;">📥 Download Badge PDF</button>
         </div>
     </div>
 </div>
@@ -186,7 +186,7 @@
             const data = await res.json();
             githubData.sha = data.sha;
             githubData.content = decodeURIComponent(escape(atob(data.content)));
-            document.getElementById('inventoryTitle').innerText = "📋 Live Inventory (Click PDF to Download)";
+            document.getElementById('inventoryTitle').innerText = "📋 Live Inventory (View or Download)";
             renderInventory();
             populateDropdown();
         } catch (e) {
@@ -208,12 +208,16 @@
             const isExpired = Date.now() > new Date(cols[4]).getTime();
             const status = isExpired ? '<span style="color:red">Expired</span>' : '<span style="color:green">Active</span>';
             
+            // Inventory row with View and PDF action buttons
             tbody.innerHTML += `
                 <tr>
                     <td>${cols[0]}</td>
                     <td>${cols[1]}</td>
                     <td>${status}</td>
-                    <td><button onclick="downloadRowPDF(${i})" style="padding:2px 5px; background:#28a745; font-size:9px;">📥 PDF</button></td>
+                    <td>
+                        <button onclick="viewRowBadge(${i})" style="padding:2px 4px; background:#3182ce; font-size:9px; margin-right:2px;">👁️ View</button>
+                        <button onclick="downloadRowPDF(${i})" style="padding:2px 4px; background:#28a745; font-size:9px;">📥 PDF</button>
+                    </td>
                 </tr>`;
         }
         if(count === 0) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No badges found.</td></tr>`;
@@ -368,6 +372,7 @@
             renderInventory();
             populateDropdown();
 
+            // Display Badge Preview with Download button
             document.getElementById('bName').innerText = name;
             document.getElementById('bRole').innerText = `${role.toUpperCase()} (Exp: ${expiryStr})`;
             const photoImg = document.getElementById('bPhoto');
@@ -385,7 +390,8 @@
         }
     }
 
-    async function downloadRowPDF(lineIdx) {
+    // View existing row badge from inventory
+    async function viewRowBadge(lineIdx) {
         const lines = githubData.content.split('\n');
         const cols = parseCSVLine(lines[lineIdx]);
         const name = cols[0];
@@ -402,53 +408,38 @@
         
         const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", loadedPrivateKeyJWK, new TextEncoder().encode(unsignedToken));
         const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        const rowJwt = `${unsignedToken}.${signatureB64}`;
+        currentSignedJwt = `${unsignedToken}.${signatureB64}`;
 
-        const tempDiv = document.createElement('div');
-        document.body.appendChild(tempDiv);
-        new QRCode(tempDiv, { text: rowJwt, width: 150, height: 150 });
-        const qrCanvas = tempDiv.querySelector('canvas');
-
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [85, 110] });
-
-        let headerColor = [0, 64, 128];
-        if (role === "Intern") headerColor = [230, 126, 34];
-        if (role === "Volunteer") headerColor = [39, 174, 96];
-        if (role === "Admin") headerColor = [142, 68, 173];
-
-        doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
-        doc.rect(0, 0, 85, 18, "F");
-
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(13);
-        doc.text(`${role.toUpperCase()} ID`, 42.5, 11, { align: "center" });
-
-        if (photoDataUrl && photoDataUrl.startsWith('data:image')) {
-            try { doc.addImage(photoDataUrl, 'JPEG', 32.5, 21, 20, 20); } catch (e) {}
+        // Populate preview box
+        document.getElementById('bName').innerText = name;
+        document.getElementById('bRole').innerText = `${role.toUpperCase()} (Exp: ${expiryStr})`;
+        
+        const photoImg = document.getElementById('bPhoto');
+        if(photoDataUrl && photoDataUrl.startsWith('data:image')) { 
+            photoImg.src = photoDataUrl; 
+            photoImg.style.display = 'block'; 
+        } else { 
+            photoImg.style.display = 'none'; 
         }
 
-        doc.setTextColor(44, 62, 80);
-        doc.setFontSize(14);
-        doc.text(name, 42.5, 46, { align: "center" });
+        document.getElementById('qrcode').innerHTML = "";
+        new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 100, height: 100 });
+        document.getElementById('badgeContainer').style.display = "block";
+        
+        // Also populate hidden form inputs so downloadBadgePDF works seamlessly
+        document.getElementById('name').value = name;
+        document.getElementById('role').value = role;
+        document.getElementById('email').value = email;
+        document.getElementById('phone').value = phone;
+        document.getElementById('expiryDate').value = expiryStr;
+        document.getElementById('photoData').value = photoDataUrl;
 
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
-        doc.setTextColor(100, 100, 100);
-        doc.text(email, 42.5, 52, { align: "center" });
-        doc.text(phone, 42.5, 57, { align: "center" });
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
 
-        if (qrCanvas) {
-            doc.addImage(qrCanvas.toDataURL("image/png"), 'PNG', 24.5, 62, 36, 36);
-        }
-
-        doc.setFontSize(8);
-        doc.setTextColor(150, 150, 150);
-        doc.text(`Expires: ${expiryStr}`, 42.5, 103, { align: "center" });
-
-        doc.save(`${name.replace(/\s+/g, '_')}_Badge.pdf`);
-        document.body.removeChild(tempDiv);
+    async function downloadRowPDF(lineIdx) {
+        await viewRowBadge(lineIdx);
+        downloadBadgePDF();
     }
 
     function downloadBadgePDF() {
