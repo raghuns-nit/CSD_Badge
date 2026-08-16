@@ -2,328 +2,313 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Team ID Issuer with PDF Export</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Admin - Secure Team ID Issuer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 15px; background: #f4f4f9; margin: 0; display: flex; flex-direction: column; align-items: center; }
-        .container { background: white; width: 100%; max-width: 450px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; margin-bottom: 20px; display: none; }
-        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
-        button { background: #007bff; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 10px; }
+        body { font-family: -apple-system, sans-serif; background: #f4f4f9; margin: 0; padding: 10px; height: 100vh; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; overflow: hidden; }
+        .card { background: white; width: 100%; max-width: 600px; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); box-sizing: border-box; margin-bottom: 10px; display: flex; flex-direction: column; }
+        h3 { margin: 0 0 10px 0; font-size: 16px; color: #333; }
+        input, select, button { width: 100%; padding: 10px; margin: 4px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; margin-top: 8px; }
         button:active { background: #0056b3; }
-        .file-box { background: #e9ecef; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
         
-        #cameraSection { display: none; text-align: center; margin-bottom: 15px; background: #000; padding: 10px; border-radius: 6px; }
-        #cameraStream { width: 100%; max-height: 250px; border-radius: 4px; }
-
-        .badge { background: white; width: 100%; max-width: 350px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); text-align: center; overflow: hidden; box-sizing: border-box; display: none; margin: auto; }
-        .badge-header { padding: 15px; color: white; font-weight: bold; font-size: 18px; }
-        .badge-body { padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        /* Dashboard Layout */
+        #dashboard { display: none; height: 100%; width: 100%; max-width: 600px; flex-direction: column; gap: 10px; }
+        .scrollable-inventory { overflow-y: auto; max-height: 200px; border: 1px solid #eee; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #ddd; padding: 6px; text-align: left; }
+        th { background-color: #f8f9fa; position: sticky; top: 0; }
         
-        .member-photo { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid #ddd; margin-bottom: 12px; background: #eee; }
-
-        .theme-Staff { background-color: #004080; }
-        .theme-Intern { background-color: #e67e22; }
-        .theme-Volunteer { background-color: #27ae60; }
-        .theme-Admin { background-color: #8e44ad; }
-        .nav-link { display: block; margin-top: 15px; font-size: 13px; color: #007bff; text-decoration: none; text-align: center; }
+        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-top: 10px; }
+        .nav-link { color: #007bff; text-decoration: none; font-size: 13px; text-align: center; display: block; margin-top: 5px; }
     </style>
 </head>
 <body>
 
-<div class="container" id="mainContainer">
-    <h2>Secure ID Issuer</h2>
-    
-    <div class="file-box">
-        <label><strong>1. Upload Private Key JSON:</strong></label>
-        <input type="file" id="privateKeyFile" accept=".json" onchange="loadPrivateKey(event)">
-    </div>
-
-    <div class="file-box">
-        <label><strong>2. Upload members.csv (Optional):</strong></label>
-        <input type="file" id="csvFile" accept=".csv" onchange="loadCSV(event)">
-    </div>
-
-    <label>Select from CSV Sheet:</label>
-    <select id="csvSelect" onchange="fillFromCSV()">
-        <option value="">-- Manual Entry or Choose Member --</option>
-    </select>
-    
-    <hr style="margin: 15px 0; border:0; border-top:1px solid #eee;">
-
-    <input type="text" id="name" placeholder="Full Name" required>
-    <select id="role">
-        <option value="Staff">Staff</option>
-        <option value="Intern">Intern</option>
-        <option value="Volunteer">Volunteer</option>
-        <option value="Admin">Admin</option>
-    </select>
-    <input type="email" id="email" placeholder="Email Address" required>
-    <input type="text" id="phone" placeholder="Phone Number" required>
-    <input type="hidden" id="photoData" value="">
-    
-    <button type="button" onclick="startCamera()" style="background: #6c757d;">📸 Capture Live Photo</button>
-
-    <div id="cameraSection">
-        <video id="cameraStream" autoplay playsinline></video>
-        <button type="button" onclick="takeSnapshot()" style="background: #28a745;">Snap Photo</button>
-    </div>
-
-    <input type="number" id="validDays" placeholder="Validity in Days" value="90">
-    <button onclick="generateID()">Generate Secure Badge</button>
-
-    <a href="index.html" class="nav-link">← Back to Verifier Scanner</a>
+<div class="card" id="setupScreen">
+    <h3>Admin Setup & GitHub Sync</h3>
+    <input type="password" id="adminPass" placeholder="Admin Password (e.g., admin123)">
+    <hr style="width:100%; border:0; border-top:1px solid #eee; margin:10px 0;">
+    <p style="font-size: 12px; color: #666; margin:0 0 5px 0;">GitHub Private Repo Settings (Saves locally):</p>
+    <input type="text" id="ghOwner" placeholder="GitHub Username (e.g., yourname)">
+    <input type="text" id="ghRepo" placeholder="Private Repo Name (e.g., team-data)">
+    <input type="password" id="ghToken" placeholder="GitHub Personal Access Token (PAT)">
+    <p style="font-size: 12px; color: #666; margin:10px 0 5px 0;">Select Private Key JSON File:</p>
+    <input type="file" id="privateKeyFile" accept=".json" onchange="loadPrivateKey(event)">
+    <button onclick="loginAndFetch()" id="loginBtn">Login & Sync Inventory</button>
+    <a href="index.html" class="nav-link">← Back to Verifier</a>
 </div>
 
-<div class="badge" id="badgeContainer">
-    <div id="badgeHeader" class="badge-header">
-        <span id="bRoleTitle">STAFF ID</span>
+<div id="dashboard">
+    <div class="card" style="flex: 1; max-height: 250px;">
+        <h3 id="inventoryTitle">📋 Live Inventory Syncing...</h3>
+        <div class="scrollable-inventory">
+            <table id="inventoryTable">
+                <thead><tr><th>Name</th><th>Role</th><th>Expiry</th><th>Status</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
     </div>
-    <div class="badge-body">
-        <img id="bPhoto" class="member-photo" src="" alt="Member Photo">
-        <h3 id="bName" style="margin: 5px 0; font-size: 22px; color: #333;"></h3>
-        <p id="bContact" style="font-size: 13px; color: #666; margin: 5px 0;"></p>
-        <div id="qrcode" style="margin: 15px auto; display: flex; justify-content: center;"></div>
-        <p id="bExpiry" style="font-size: 11px; color: #888; margin-bottom: 15px;"></p>
+
+    <div class="card" style="flex: 2; overflow-y: auto;">
+        <h3>➕ Issue New ID Badge</h3>
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="name" placeholder="Full Name" required>
+            <select id="role">
+                <option value="Staff">Staff</option>
+                <option value="Intern">Intern</option>
+                <option value="Volunteer">Volunteer</option>
+                <option value="Admin">Admin</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <input type="email" id="email" placeholder="Email Address" required>
+            <input type="text" id="phone" placeholder="Phone Number (10 digits)" pattern="[6-9][0-9]{9}" required>
+        </div>
         
-        <button onclick="downloadBadgePDF()" style="background: #28a745; margin-top: 5px;">📥 Download Badge PDF</button>
+        <input type="text" id="photoUrl" placeholder="Photo URL (Optional)">
+        
+        <p style="font-size: 12px; margin: 5px 0 0 0;">Expiry Date:</p>
+        <input type="date" id="expiryDate" required>
+        
+        <button onclick="generateAndSaveID()" id="issueBtn">Generate & Auto-Sync to GitHub</button>
+        <a href="index.html" class="nav-link" onclick="logout()">← Logout / Back to Verifier</a>
+
+        <div class="badge-preview" id="badgeContainer">
+            <h3 style="margin-bottom: 5px;" id="bName"></h3>
+            <p style="font-size:12px; color: #666; margin: 0 0 10px 0;" id="bRole"></p>
+            <img id="bPhoto" src="" style="width:70px; height:70px; border-radius:50%; object-fit:cover; display:none; margin: 0 auto 10px;">
+            <div id="qrcode" style="display:flex; justify-content:center;"></div>
+            <p style="font-size:11px; color:green; margin-top:10px;">✅ Saved directly to GitHub Database</p>
+        </div>
     </div>
 </div>
 
 <script>
-    // Allowed Admin Password Hashes (SHA-256)
-    const ALLOWED_PASSWORD_HASHES = [
-        "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9" // Hash for "admin123"
-    ];
+    // --- 1. CONFIGURATION ---
+    // PASTE YOUR GENERATED HASH HERE (Current hash is for "admin123"):
+    const ALLOWED_PASSWORD_HASHES = ["ef92b778bafe771e89245b89ecbc08a44a4e166c066591168d819bf8fb7ab0bdf"]; 
+    
+    let loadedPrivateKeyJWK = null;
+    let githubData = { sha: "", content: "Name,Role,Email,Phone,ValidityDate,PhotoURL\n" }; // Default empty CSV state
 
-    window.onload = async function() {
-        const password = prompt("Enter Admin Password:");
-        if (!password) {
-            alert("Access denied.");
-            window.location.href = "index.html";
-            return;
-        }
-
-        const msgBuffer = new TextEncoder().encode(password);
-        const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-        if (ALLOWED_PASSWORD_HASHES.includes(hashHex)) {
-            document.getElementById('mainContainer').style.display = 'block';
-        } else {
-            alert("Incorrect password!");
-            window.location.href = "index.html";
-        }
+    // Initialize logic
+    window.onload = () => {
+        // Pre-fill local storage settings
+        document.getElementById('ghOwner').value = localStorage.getItem('ghOwner') || '';
+        document.getElementById('ghRepo').value = localStorage.getItem('ghRepo') || '';
+        document.getElementById('ghToken').value = localStorage.getItem('ghToken') || '';
+        
+        // Restrict Date Picker to Today onwards
+        const dateInput = document.getElementById('expiryDate');
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.setAttribute('min', today);
+        
+        // Default Expiry: Set to exactly 1 year ahead
+        const defaultExpiry = new Date();
+        defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
+        dateInput.value = defaultExpiry.toISOString().split('T')[0];
     };
 
-    let loadedPrivateKeyJWK = null;
-    let csvDataList = [];
-    let mediaStream = null;
-    let currentSignedJwt = ""; // Store signed token for PDF generation
-
+    // Load Private Key
     function loadPrivateKey(event) {
         const file = event.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = async (e) => {
             try {
-                loadedPrivateKeyJWK = JSON.parse(e.target.result);
-                alert("Private Key loaded securely into browser memory!");
-            } catch (err) {
-                alert("Invalid Private Key JSON file.");
+                loadedPrivateKeyJWK = await window.crypto.subtle.importKey(
+                    "jwk", JSON.parse(e.target.result), { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["sign"]
+                );
+                alert("Private Key Validated & Ready!");
+            } catch (err) { alert("Invalid Private Key File."); }
+        };
+        reader.readAsText(file);
+    }
+
+    // --- 2. AUTH & GITHUB API LOGIC ---
+    async function loginAndFetch() {
+        const pass = document.getElementById('adminPass').value.trim();
+        const msgBuffer = new TextEncoder().encode(pass);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+        const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        if (!ALLOWED_PASSWORD_HASHES.includes(hashHex) || !loadedPrivateKeyJWK) {
+            alert("Incorrect password or missing Private Key.");
+            return;
+        }
+
+        // Save GitHub Settings to localStorage
+        localStorage.setItem('ghOwner', document.getElementById('ghOwner').value.trim());
+        localStorage.setItem('ghRepo', document.getElementById('ghRepo').value.trim());
+        localStorage.setItem('ghToken', document.getElementById('ghToken').value.trim());
+
+        document.getElementById('setupScreen').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'flex';
+        
+        await fetchInventory();
+    }
+
+    async function fetchInventory() {
+        const owner = localStorage.getItem('ghOwner');
+        const repo = localStorage.getItem('ghRepo');
+        const token = localStorage.getItem('ghToken');
+        
+        try {
+            const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/members.csv`, {
+                headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+            });
+
+            if (res.status === 404) {
+                document.getElementById('inventoryTitle').innerText = "📋 Inventory (New File)";
+                renderInventory();
+                return;
             }
-        };
-        reader.readAsText(file);
+
+            if (!res.ok) throw new Error("GitHub API Error");
+
+            const data = await res.json();
+            githubData.sha = data.sha;
+            
+            // Safely Decode Base64 from GitHub
+            githubData.content = decodeURIComponent(escape(atob(data.content)));
+            document.getElementById('inventoryTitle').innerText = "📋 Live Inventory";
+            renderInventory();
+        } catch (e) {
+            alert("Failed to fetch inventory from GitHub. Check your Repo Name and Token.");
+            document.getElementById('inventoryTitle').innerText = "📋 Inventory (Offline Mode)";
+        }
     }
 
-    function loadCSV(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            parseCSV(e.target.result);
-        };
-        reader.readAsText(file);
-    }
-
-    function parseCSV(text) {
-        const lines = text.split('\n');
-        const select = document.getElementById('csvSelect');
-        select.innerHTML = '<option value="">-- Manual Entry or Choose Member --</option>';
-        csvDataList = [];
-
+    function renderInventory() {
+        const tbody = document.querySelector('#inventoryTable tbody');
+        tbody.innerHTML = '';
+        const lines = githubData.content.split('\n');
+        let count = 0;
+        
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
-            const cols = lines[i].split(',').map(c => c.trim());
-            csvDataList.push({ name: cols[0], role: cols[1], email: cols[2], phone: cols[3], days: cols[4], photo: cols[5] });
-            const opt = document.createElement('option');
-            opt.value = csvDataList.length - 1;
-            opt.innerText = `${cols[0]} (${cols[1]})`;
-            select.appendChild(opt);
+            count++;
+            const cols = lines[i].split(',');
+            const expiryDate = new Date(cols[4]);
+            const isExpired = Date.now() > expiryDate.getTime();
+            const status = isExpired ? '<span style="color:red">Expired</span>' : '<span style="color:green">Active</span>';
+            
+            tbody.innerHTML += `<tr><td>${cols[0]}</td><td>${cols[1]}</td><td>${cols[4]}</td><td>${status}</td></tr>`;
+        }
+
+        if(count === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No badges issued yet.</td></tr>`;
         }
     }
 
-    function fillFromCSV() {
-        const idx = document.getElementById('csvSelect').value;
-        if (idx === "") return;
-        const member = csvDataList[idx];
-        document.getElementById('name').value = member.name || '';
-        document.getElementById('role').value = member.role || 'Staff';
-        document.getElementById('email').value = member.email || '';
-        document.getElementById('phone').value = member.phone || '';
-        document.getElementById('photoData').value = member.photo || '';
-        document.getElementById('bPhoto').src = member.photo || 'https://via.placeholder.com/90?text=No+Photo';
-        if(member.days) document.getElementById('validDays').value = member.days;
-    }
-
-    async function startCamera() {
-        const cameraSection = document.getElementById('cameraSection');
-        const video = document.getElementById('cameraStream');
-        cameraSection.style.display = 'block';
-        try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-            video.srcObject = mediaStream;
-        } catch (err) {
-            alert("Could not access front camera.");
-        }
-    }
-
-    function takeSnapshot() {
-        const video = document.getElementById('cameraStream');
-        const canvas = document.createElement('canvas');
-        canvas.width = 150;
-        canvas.height = 150;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg');
-        
-        document.getElementById('photoData').value = dataUrl;
-        document.getElementById('bPhoto').src = dataUrl;
-
-        if (mediaStream) {
-            mediaStream.getTracks().forEach(track => track.stop());
-        }
-        document.getElementById('cameraSection').style.display = 'none';
-        alert("Photo captured successfully!");
-    }
-
-    async function generateID() {
-        if (!loadedPrivateKeyJWK) {
-            alert("Please upload your private key file first!");
-            return;
-        }
-
-        const name = document.getElementById('name').value;
+    // --- 3. BADGE GENERATION & AUTO-SYNC ---
+    async function generateAndSaveID() {
+        const btn = document.getElementById('issueBtn');
+        const name = document.getElementById('name').value.trim();
         const role = document.getElementById('role').value;
-        const email = document.getElementById('email').value;
-        const phone = document.getElementById('phone').value;
-        const photoUrl = document.getElementById('photoData').value || 'https://via.placeholder.com/90?text=No+Photo';
-        const validDays = parseInt(document.getElementById('validDays').value) || 90;
+        const email = document.getElementById('email').value.trim();
+        const phone = document.getElementById('phone').value.trim();
+        const photoUrl = document.getElementById('photoUrl').value.trim();
+        const expiryStr = document.getElementById('expiryDate').value;
 
-        if(!name || !email) {
-            alert("Please fill in required fields.");
+        // Basic Check
+        if(!name || !email || !phone || !expiryStr) {
+            alert("Name, Email, Phone, and Expiry are required.");
             return;
         }
 
-        const header = { alg: "RS256", typ: "JWT" };
-        const payload = { name, role, email, phone, photo: photoUrl, exp: Date.now() + (validDays * 86400000) };
+        // Email Validation (Basic RFC 5322 standard check)
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            alert("Please enter a valid email address format.");
+            return;
+        }
 
-        const headerB64 = btoa(JSON.stringify(header));
-        const payloadB64 = btoa(JSON.stringify(payload));
+        // Phone Validation (10 Digit India Style starting with 6,7,8, or 9)
+        const phoneRegex = /^[6-9]\d{9}$/;
+        if (!phoneRegex.test(phone)) {
+            alert("Please enter a valid 10-digit Indian phone number.");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Processing & Syncing...";
+
+        const expTimestamp = new Date(expiryStr + "T23:59:59").getTime();
+
+        // 1. Cryptographically Sign Token
+        const headerB64 = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+        const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, photo: photoUrl, exp: expTimestamp }));
         const unsignedToken = `${headerB64}.${payloadB64}`;
 
         try {
-            const privKey = await window.crypto.subtle.importKey(
-                "jwk", loadedPrivateKeyJWK, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
-            );
+            const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", loadedPrivateKeyJWK, new TextEncoder().encode(unsignedToken));
+            const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            const signedJwt = `${unsignedToken}.${signatureB64}`;
 
-            const signatureBuffer = await window.crypto.subtle.sign(
-                "RSASSA-PKCS1-v1_5", privKey, new TextEncoder().encode(unsignedToken)
-            );
+            // 2. Append Data locally
+            const newRow = `\n${name},${role},${email},${phone},${expiryStr},${photoUrl}`;
+            // Remove trailing newlines before appending
+            githubData.content = githubData.content.replace(/\n$/, "") + newRow;
 
-            const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
-                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            // 3. Push to GitHub Automatically
+            const owner = localStorage.getItem('ghOwner');
+            const repo = localStorage.getItem('ghRepo');
+            const token = localStorage.getItem('ghToken');
+            
+            // Safe Base64 encode for GitHub push
+            const contentEncoded = btoa(unescape(encodeURIComponent(githubData.content)));
 
-            currentSignedJwt = `${unsignedToken}.${signatureB64}`;
+            const payload = {
+                message: `Issued new ID for ${name}`,
+                content: contentEncoded
+            };
+            if (githubData.sha) payload.sha = githubData.sha; // Must include SHA to update existing file
 
-            const headerEl = document.getElementById('badgeHeader');
-            headerEl.className = `badge-header theme-${role}`;
-            document.getElementById('bRoleTitle').innerText = `${role.toUpperCase()} ID`;
-            document.getElementById('bName').innerText = name;
-            document.getElementById('bContact').innerText = `${email} | ${phone}`;
-            document.getElementById('bExpiry').innerText = `Valid for ${validDays} days`;
-            document.getElementById('bPhoto').src = photoUrl;
-
-            document.getElementById('qrcode').innerHTML = "";
-            new QRCode(document.getElementById("qrcode"), {
-                text: currentSignedJwt,
-                width: 170,
-                height: 170
+            const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/members.csv`, {
+                method: 'PUT',
+                headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
 
+            if(!res.ok) throw new Error("GitHub Sync Failed");
+
+            const data = await res.json();
+            if(data.content) githubData.sha = data.content.sha; // Update local SHA for the next badge creation
+
+            // 4. Update UI
+            renderInventory();
+            document.getElementById('bName').innerText = name;
+            document.getElementById('bRole').innerText = `${role.toUpperCase()} (Exp: ${expiryStr})`;
+            
+            const photoImg = document.getElementById('bPhoto');
+            if(photoUrl) { photoImg.src = photoUrl; photoImg.style.display = 'block'; } 
+            else { photoImg.style.display = 'none'; }
+
+            document.getElementById('qrcode').innerHTML = "";
+            new QRCode(document.getElementById("qrcode"), { text: signedJwt, width: 140, height: 140 });
             document.getElementById('badgeContainer').style.display = "block";
-        } catch (err) {
-            alert("Signing failed. Ensure you uploaded the correct private key file.");
+            
+            // Clear form inputs
+            document.getElementById('name').value = '';
+            document.getElementById('email').value = '';
+            document.getElementById('phone').value = '';
+            document.getElementById('photoUrl').value = '';
+
+        } catch (err) { 
+            alert("Error generating or syncing badge: " + err.message); 
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Generate & Auto-Sync to GitHub";
         }
     }
 
-    // PDF Download Generation Logic using jsPDF
-    function downloadBadgePDF() {
-        const { jsPDF } = window.jspdf;
-        // Standard credit card / badge sizing (Width: 85mm, Height: 110mm portrait)
-        const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [85, 110] });
-
-        const name = document.getElementById('name').value;
-        const role = document.getElementById('role').value;
-        const email = document.getElementById('email').value;
-        const phone = document.getElementById('phone').value;
-        const validDays = document.getElementById('validDays').value;
-
-        // Header Background color mapping
-        let headerColor = [0, 64, 128]; // Staff Blue
-        if (role === "Intern") headerColor = [230, 126, 34];
-        if (role === "Volunteer") headerColor = [39, 174, 96];
-        if (role === "Admin") headerColor = [142, 68, 173];
-
-        // Draw Header Box
-        doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
-        doc.rect(0, 0, 85, 20, "F");
-
-        // Header Title text
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(14);
-        doc.text(`${role.toUpperCase()} ID`, 42.5, 13, { align: "center" });
-
-        // Member Name
-        doc.setTextColor(44, 62, 80);
-        doc.setFontSize(16);
-        doc.text(name, 42.5, 45, { align: "center" });
-
-        // Contact Info
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(100, 100, 100);
-        doc.text(email, 42.5, 52, { align: "center" });
-        doc.text(phone, 42.5, 57, { align: "center" });
-
-        // Extract QR code image data from the rendered canvas
-        const qrCanvas = document.querySelector('#qrcode canvas');
-        if (qrCanvas) {
-            const qrImageURL = qrCanvas.toDataURL("image/png");
-            // Add QR code image onto PDF layout
-            doc.addImage(qrImageURL, 'PNG', 22.5, 62, 40, 40);
-        }
-
-        // Validity text
-        doc.setFontSize(8);
-        doc.setTextColor(150, 150, 150);
-        doc.text(`Valid for ${validDays} days`, 42.5, 106, { align: "center" });
-
-        // Save PDF file
-        doc.save(`${name.replace(/\s+/g, '_')}_ID_Badge.pdf`);
+    function logout() {
+        loadedPrivateKeyJWK = null;
+        githubData = { sha: "", content: "" };
     }
 </script>
 
