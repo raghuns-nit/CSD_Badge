@@ -23,7 +23,6 @@
         #cameraSection { display: none; text-align: center; background: #000; padding: 4px; border-radius: 6px; }
         .camera-wrapper { position: relative; width: 100%; height: 160px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
         #cameraStream { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
-        .face-guide-circle { position: absolute; width: 90px; height: 90px; border: 2px dashed rgba(255, 255, 255, 0.9); border-radius: 50%; pointer-events: none; }
 
         .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 6px; border-radius: 6px; margin-top: 3px; }
         .nav-link { color: #007bff; text-decoration: none; font-size: 10px; text-align: center; display: block; margin-top: 2px; }
@@ -85,7 +84,6 @@
         <div id="cameraSection">
             <div class="camera-wrapper">
                 <video id="cameraStream" autoplay playsinline></video>
-                <div class="face-guide-circle"></div>
             </div>
             <button type="button" onclick="takeSnapshot()" style="background: #28a745; padding: 5px; margin-top: 3px;">Snap & Save Photo</button>
         </div>
@@ -210,7 +208,6 @@
             const isExpired = Date.now() > new Date(cols[4]).getTime();
             const status = isExpired ? '<span style="color:red">Expired</span>' : '<span style="color:green">Active</span>';
             
-            // Add inventory row with direct PDF download action button
             tbody.innerHTML += `
                 <tr>
                     <td>${cols[0]}</td>
@@ -237,6 +234,7 @@
         }
     }
 
+    // Bulletproof CSV Parser handling commas inside quoted Base64 strings
     function parseCSVLine(text) {
         let result = [];
         let cur = '';
@@ -302,7 +300,7 @@
                 const canvas = document.createElement('canvas');
                 canvas.width = 150; canvas.height = 150;
                 const ctx = canvas.getContext('2d');
-                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 document.getElementById('photoData').value = canvas.toDataURL('image/jpeg', 0.7);
                 alert("Image converted & loaded!");
             };
@@ -398,7 +396,6 @@
         const expiryStr = cols[4];
         const photoDataUrl = (cols[5] || '').replace(/^"|"$/g, '');
 
-        // Generate signed JWT for the row on-the-fly
         const expTimestamp = new Date(expiryStr + "T23:59:59").getTime();
         const headerB64 = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
         const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, photo: photoDataUrl, exp: expTimestamp }));
@@ -408,7 +405,6 @@
         const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         const rowJwt = `${unsignedToken}.${signatureB64}`;
 
-        // Render temporary hidden container to compile QR code image
         const tempDiv = document.createElement('div');
         document.body.appendChild(tempDiv);
         new QRCode(tempDiv, { text: rowJwt, width: 150, height: 150 });
@@ -457,7 +453,6 @@
     }
 
     function downloadBadgePDF() {
-        // Triggers PDF download for the currently previewed badge
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [85, 110] });
 
