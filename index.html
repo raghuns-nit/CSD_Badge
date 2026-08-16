@@ -3,101 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team ID Verifier</title>
+    <title>Team ID Portal</title>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 15px; background: #f4f4f9; margin: 0; }
-        .card { background: white; max-width: 400px; margin: 20px auto; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; }
-        .valid { color: #27ae60; font-weight: bold; font-size: 18px; }
-        .invalid { color: #c0392b; font-weight: bold; font-size: 18px; }
-        video { width: 100%; border-radius: 8px; }
-        .nav-link { display: block; margin-top: 20px; font-size: 13px; color: #666; text-decoration: none; }
-        .nav-link:hover { text-decoration: underline; }
+        body { font-family: sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 15px; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; }
+        .card { background: white; width: 100%; max-width: 400px; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; }
+        .valid { color: #27ae60; font-weight: bold; font-size: 16px; margin-top: 10px;}
+        .invalid { color: #c0392b; font-weight: bold; font-size: 16px; margin-top: 10px;}
+        button { background: #007bff; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-bottom: 15px; }
+        .btn-outline { background: white; color: #007bff; border: 2px solid #007bff; }
+        video { width: 100%; border-radius: 8px; display: none; margin-top: 15px;}
+        #uploadSection { margin-top: 15px; display: none; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>Team ID Verification</h2>
-    <video id="preview" autoplay playsinline></video>
-    <div id="result" style="margin-top: 15px; font-size: 15px;">Point camera at team member QR code...</div>
+<div class="card" id="homeScreen">
+    <h2>Team ID Portal</h2>
+    <p style="color: #666; margin-bottom: 25px;">Select an action below:</p>
+    <button onclick="showScanner()">🔍 Verify Badge / ID</button>
+    <button class="btn-outline" onclick="window.location.href='admin.html'">⚙️ Admin Portal</button>
+</div>
+
+<div class="card" id="scannerScreen" style="display: none;">
+    <h2>Verify ID</h2>
+    <button class="btn-outline" onclick="goHome()" style="padding: 8px; font-size: 14px;">← Back</button>
     
-    <a href="admin.html" class="nav-link">⚙️ Switch to Admin Issuer Portal</a>
+    <video id="preview" playsinline></video>
+    
+    <div id="uploadSection">
+        <p style="font-size: 13px; color: #666;">Camera not focusing? Take a picture instead:</p>
+        <input type="file" accept="image/*" capture="environment" id="fileInput" onchange="handleImageUpload(event)">
+    </div>
+
+    <div id="result">Waiting for QR Code...</div>
 </div>
 
 <script>
     // PASTE YOUR PUBLIC KEY JWK HERE
-    const PUBLIC_KEY_JWK = {
-        kty: "RSA",
-        n: "zzLlxb6HgJinHJuPTd1WGGpahZ9gkpxVwo2QPtB4W7TAJahYAPwzJOp7ZutxgSJyMhpzRrsAwyXSCYLGcUzYmMFZ6CQTiB5PSRwAfwsZYJzjE6HYc0rs-_U73LzI940hUKfYuXXdTohhT7Y4amS8sNppFLsaKg015XEnXryx8u0uI825jJyhfm9LakXnJmyQPnBAQbTnMihd1xqRzfTs0fvdDjxHhdtc5HPGOLLvo4iC48O33-wO1AzKbB3brJRraDR304dBMRywWdqzw0HxCz9s8wgbh1mEcy4tahuzzkgpoeFwvu0Zh6pMy4Gz1jVaftDsoCPCD6PRsh_nbq0UZQ",
-        e: "AQAB"
-    };
+    const PUBLIC_KEY_JWK = { "kty": "RSA", "n": "YOUR_PUBLIC_KEY", "e": "AQAB" };
 
-    const video = document.getElementById('preview');
-    const resultDiv = document.getElementById('result');
-
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream => {
-        video.srcObject = stream;
-        requestAnimationFrame(tick);
-    }).catch(err => {
-        resultDiv.innerHTML = `<p class="invalid">Camera access denied or unavailable.</p>`;
-    });
-
-    function tick() {
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
-
-            if (code) {
-                verifyToken(code.data);
-                return;
-            }
-        }
-        requestAnimationFrame(tick);
-    }
-
-    async function verifyToken(jwtString) {
-        try {
-            const [headerB64, payloadB64, signatureB64] = jwtString.split('.');
-            if (!headerB64 || !payloadB64 || !signatureB64) throw new Error("Invalid ID format");
-
-            const payload = JSON.parse(atob(payloadB64));
-            
-            if (Date.now() > payload.exp) {
-                resultDiv.innerHTML = `<p class="invalid">❌ ID EXPIRED</p><p><strong>Name:</strong> ${payload.name}</p>`;
-                return;
-            }
-
-            const key = await window.crypto.subtle.importKey(
-                "jwk", PUBLIC_KEY_JWK, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]
-            );
-
-            const dataToVerify = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-            const signature = Uint8Array.from(atob(signatureB64.replace(/_/g, '/').replace(/-/g, '+')), c => c.charCodeAt(0));
-
-            const isValid = await window.crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, dataToVerify);
-
-            if (isValid) {
-                resultDiv.innerHTML = `
-                    <p class="valid">✅ VERIFIED SECURE ID</p>
-                    <p><strong>Name:</strong> ${payload.name}</p>
-                    <p><strong>Role:</strong> ${payload.role}</p>
-                    <p><strong>Email:</strong> ${payload.email}</p>
-                    <p><strong>Phone:</strong> ${payload.phone}</p>
-                `;
-            } else {
-                resultDiv.innerHTML = `<p class="invalid">⚠️ TAMPERED OR FAKE ID</p>`;
-            }
-        } catch (e) {
-            resultDiv.innerHTML = `<p class="invalid">❌ Unrecognized QR Code Format</p>`;
-        }
-    }
-</script>
-
-</body>
-</html>
+    let stream = null;
+    const video = document.getElementById('
