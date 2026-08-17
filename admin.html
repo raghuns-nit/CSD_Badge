@@ -8,48 +8,59 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; background: #f4f4f9; margin: 0; padding: 5px; height: 100vh; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; overflow: hidden; }
-        .card { background: white; width: 100%; max-width: 520px; padding: 10px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); box-sizing: border-box; margin-bottom: 5px; display: flex; flex-direction: column; }
-        h3 { margin: 0 0 3px 0; font-size: 13px; color: #333; }
-        input, select, button { width: 100%; padding: 6px; margin: 2px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 11px; }
+        .card { background: white; width: 100%; max-width: 520px; padding: 10px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); box-sizing: border-box; display: flex; flex-direction: column; }
+        h3 { margin: 0 0 5px 0; font-size: 14px; color: #333; }
+        input, select, button { width: 100%; padding: 8px; margin: 3px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 12px; }
         button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
         button:active { background: #0056b3; }
         
-        #dashboard { display: none; height: 100%; width: 100%; max-width: 520px; flex-direction: column; gap: 5px; }
-        .scrollable-inventory { overflow-y: auto; max-height: 120px; border: 1px solid #eee; font-size: 10px; }
+        /* TABS UI */
+        .tab-container { display: none; width: 100%; max-width: 520px; margin-bottom: 5px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background: white; flex-shrink: 0; }
+        .tab-btn { flex: 1; padding: 10px; background: #e2e8f0; border: none; font-weight: bold; cursor: pointer; font-size: 13px; color: #4a5568; margin: 0; border-radius: 0; }
+        .tab-btn.active { background: #2b6cb0; color: white; }
+        
+        .tab-content { display: none; width: 100%; max-width: 520px; flex: 1; overflow-y: auto; }
+        .tab-content.active { display: flex; flex-direction: column; gap: 5px; }
+
+        .scrollable-inventory { overflow-y: auto; flex: 1; border: 1px solid #eee; font-size: 11px; border-radius: 4px; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border-bottom: 1px solid #ddd; padding: 4px; text-align: left; }
+        th, td { border-bottom: 1px solid #ddd; padding: 6px; text-align: left; }
         th { background-color: #f8f9fa; position: sticky; top: 0; }
         
-        .action-link { color: #007bff; font-weight: bold; text-decoration: none; margin-right: 8px; font-size: 10px; cursor: pointer; }
+        .action-link { color: #007bff; font-weight: bold; text-decoration: none; margin-right: 8px; cursor: pointer; }
         .action-link.dl { color: #28a745; margin-right: 0; }
         
         #cameraSection { display: none; text-align: center; background: #000; padding: 4px; border-radius: 6px; }
         .camera-wrapper { width: 100%; height: 160px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
         #cameraStream { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
 
-        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 6px; border-radius: 6px; margin-top: 3px; background: #fff; }
-        .nav-link { color: #007bff; text-decoration: none; font-size: 10px; text-align: center; display: block; margin-top: 2px; }
+        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 10px; border-radius: 6px; margin-top: 5px; background: #fff; }
+        .nav-link { color: #007bff; text-decoration: none; font-size: 11px; text-align: center; display: block; margin-top: 5px; padding-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="card" id="setupScreen" style="margin-top: 15px;">
-    <h3>Admin Setup & GitHub Sync</h3>
+    <h3>Admin Setup & Secure Cloud Sync</h3>
+    <p style="font-size: 11px; color: #e53e3e; margin:0 0 5px 0; font-weight: bold;">⚠️ Ensure 'ecdsa-private-key.json' is uploaded to your private repo.</p>
     <input type="password" id="adminPass" placeholder="Admin Password">
-    <hr style="width:100%; border:0; border-top:1px solid #eee; margin:5px 0;">
-    <p style="font-size: 10px; color: #666; margin:0 0 2px 0;">GitHub Private Repo Settings:</p>
+    <hr style="width:100%; border:0; border-top:1px solid #eee; margin:8px 0;">
+    <p style="font-size: 11px; color: #666; margin:0 0 2px 0;">GitHub Private Repo Settings:</p>
     <input type="text" id="ghOwner" placeholder="GitHub Username">
     <input type="text" id="ghRepo" placeholder="Private Repo Name" value="Badge_Details">
     <input type="password" id="ghToken" placeholder="GitHub Personal Access Token (PAT)">
-    <p style="font-size: 10px; color: #666; margin:3px 0 2px 0;">Select ECDSA Private Key JSON File:</p>
-    <input type="file" id="privateKeyFile" accept=".json" onchange="loadPrivateKey(event)">
-    <button onclick="loginAndFetch()">Login & Sync Inventory</button>
+    <button onclick="loginAndFetch()" id="loginBtn" style="margin-top: 8px; padding: 10px;">Login & Fetch Vault Data</button>
     <a href="index.html" class="nav-link">← Back to Verifier</a>
 </div>
 
-<div id="dashboard">
-    <div class="card" style="max-height: 150px;">
-        <h3 id="inventoryTitle">📋 Live Inventory</h3>
+<div class="tab-container" id="tabsNav" style="display: none;">
+    <button class="tab-btn active" id="btn-inventory" onclick="switchTab('inventory')">📋 Live Inventory</button>
+    <button class="tab-btn" id="btn-issue" onclick="switchTab('issue')">➕ Create / Edit</button>
+</div>
+
+<div id="tab-inventory" class="tab-content active">
+    <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+        <h3 id="inventoryTitle">Loading Database...</h3>
         <div class="scrollable-inventory">
             <table id="inventoryTable">
                 <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
@@ -57,50 +68,52 @@
             </table>
         </div>
     </div>
+    <a href="index.html" class="nav-link" onclick="logout()">← Logout / Back to Verifier</a>
+</div>
 
+<div id="tab-issue" class="tab-content">
     <div class="card" style="flex: 1; overflow-y: auto;">
-        <h3>➕ Issue or Edit Badge</h3>
         <select id="csvSelect" onchange="fillFromCSV()"><option value="">-- Select Existing Member to Edit or Create New --</option></select>
         
-        <div style="display: flex; gap: 4px;">
+        <div style="display: flex; gap: 6px;">
             <input type="text" id="name" placeholder="Full Name" required>
             <select id="role"><option value="Staff">Staff</option><option value="Intern">Intern</option><option value="Volunteer">Volunteer</option><option value="Admin">Admin</option></select>
         </div>
-        <div style="display: flex; gap: 4px;">
+        <div style="display: flex; gap: 6px;">
             <input type="email" id="email" placeholder="Email Address" required>
             <input type="text" id="phone" placeholder="Phone (10 digits)" pattern="[6-9][0-9]{9}" required>
         </div>
         
-        <div style="display: flex; gap: 4px; align-items: center;">
+        <div style="display: flex; gap: 6px; align-items: center;">
             <input type="hidden" id="photoData" value="">
-            <button type="button" onclick="startCamera()" style="background: #6c757d; padding: 5px;">📸 Live Snapshot</button>
-            <input type="file" accept="image/*" onchange="handleImageFile(event)" style="padding: 1px;">
+            <button type="button" onclick="startCamera()" style="background: #6c757d; margin: 0;">📸 Live Photo</button>
+            <input type="file" accept="image/*" onchange="handleImageFile(event)" style="padding: 4px; margin: 0;">
         </div>
 
         <div id="cameraSection">
             <div class="camera-wrapper"><video id="cameraStream" autoplay playsinline></video></div>
-            <button type="button" onclick="takeSnapshot()" style="background: #28a745; padding: 5px; margin-top: 3px;">Snap & Save Photo</button>
+            <button type="button" onclick="takeSnapshot()" style="background: #28a745; margin-top: 5px;">Snap & Save Photo</button>
         </div>
         
-        <div style="display: flex; align-items: center; gap: 4px;">
-            <span style="font-size: 10px; font-weight: bold; color: #555;">Valid Until:</span><input type="date" id="expiryDate" required>
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+            <span style="font-size: 12px; font-weight: bold; color: #555;">Valid Until:</span><input type="date" id="expiryDate" required style="margin:0;">
         </div>
         
-        <button onclick="generateAndSaveID()" id="issueBtn" style="background: #2b6cb0; padding: 8px;">Generate, Save & Auto-Sync</button>
-        <a href="index.html" class="nav-link" onclick="logout()">← Logout / Back to Verifier</a>
-
+        <button onclick="generateAndSaveID()" id="issueBtn" style="background: #2b6cb0; padding: 10px; margin-top: 8px;">Generate, Save & Auto-Sync</button>
+        
         <div class="badge-preview" id="badgeContainer">
             <h3 style="margin-bottom: 2px;" id="bName"></h3>
-            <p style="font-size: 10px; color: #666; margin: 0 0 3px 0;" id="bRole"></p>
-            <img id="bPhoto" src="" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; display: none; margin: 0 auto 3px; border: 2px solid #ccc;">
-            <div id="qrcode" style="display: flex; justify-content: center;"></div>
-            <p style="font-size: 9px; color: green; margin: 2px 0;">✅ Ready</p>
-            <button onclick="downloadBadgePDF()" style="background: #28a745; padding: 6px; margin-top: 3px;">📥 Download Badge PDF</button>
+            <p style="font-size: 11px; color: #666; margin: 0 0 5px 0;" id="bRole"></p>
+            <img id="bPhoto" src="" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; display: none; margin: 0 auto 5px; border: 2px solid #ccc;">
+            <div id="qrcode" style="display: flex; justify-content: center; margin-bottom: 5px;"></div>
+            <p style="font-size: 10px; color: green; margin: 4px 0; font-weight: bold;">✅ Synced to GitHub Cloud Vault</p>
+            <button onclick="downloadBadgePDF()" style="background: #28a745; padding: 8px;">📥 Download Badge PDF</button>
         </div>
     </div>
 </div>
 
 <script>
+    // UPDATE YOUR PASSWORD HASH HERE
     const ALLOWED_PASSWORD_HASHES = ["240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"]; 
     
     let rawPrivateKeyJson = null;
@@ -116,18 +129,11 @@
         document.getElementById('expiryDate').value = defaultExpiry.toISOString().split('T')[0];
     };
 
-    function loadPrivateKey(event) {
-        const file = event.target.files[0]; if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => { rawPrivateKeyJson = e.target.result; alert("ECDSA Private Key Loaded!"); };
-        reader.readAsText(file);
-    }
-
-    async function getSigningKey() {
-        if (!rawPrivateKeyJson) throw new Error("Private key file not loaded.");
-        return await window.crypto.subtle.importKey(
-            "jwk", JSON.parse(rawPrivateKeyJson), { name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]
-        );
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('tab-' + tabId).classList.add('active');
+        document.getElementById('btn-' + tabId).classList.add('active');
     }
 
     async function loginAndFetch() {
@@ -135,26 +141,64 @@
         const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pass));
         const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-        if (!ALLOWED_PASSWORD_HASHES.includes(hashHex) || !rawPrivateKeyJson) { alert("Incorrect password or missing ECDSA Key."); return; }
+        if (!ALLOWED_PASSWORD_HASHES.includes(hashHex)) { alert("Incorrect Admin Password."); return; }
 
-        localStorage.setItem('ghOwner', document.getElementById('ghOwner').value.trim());
-        localStorage.setItem('ghRepo', document.getElementById('ghRepo').value.trim());
-        localStorage.setItem('ghToken', document.getElementById('ghToken').value.trim());
+        const owner = document.getElementById('ghOwner').value.trim();
+        const repo = document.getElementById('ghRepo').value.trim();
+        const token = document.getElementById('ghToken').value.trim();
 
-        document.getElementById('setupScreen').style.display = 'none';
-        document.getElementById('dashboard').style.display = 'flex';
-        await fetchInventory();
+        if(!owner || !repo || !token) { alert("GitHub details are missing."); return; }
+
+        document.getElementById('loginBtn').disabled = true;
+        document.getElementById('loginBtn').innerText = "Connecting to Vault...";
+
+        try {
+            // Fetch Private Key Directly from GitHub
+            const keyRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/ecdsa-private-key.json`, {
+                headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+            });
+            
+            if (!keyRes.ok) {
+                throw new Error("Could not find 'ecdsa-private-key.json' in your private repository. Please ensure you uploaded it.");
+            }
+            
+            const keyData = await keyRes.json();
+            rawPrivateKeyJson = decodeURIComponent(escape(atob(keyData.content)));
+
+            // Fetch Member CSV
+            const csvRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/members.csv`, {
+                headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+            });
+
+            if (csvRes.ok) {
+                const csvData = await csvRes.json();
+                githubData.sha = csvData.sha;
+                githubData.content = decodeURIComponent(escape(atob(csvData.content)));
+            }
+
+            // Save details & Switch UI
+            localStorage.setItem('ghOwner', owner);
+            localStorage.setItem('ghRepo', repo);
+            localStorage.setItem('ghToken', token);
+            
+            document.getElementById('setupScreen').style.display = 'none';
+            document.getElementById('tabsNav').style.display = 'flex';
+            document.getElementById('tab-inventory').style.display = 'flex';
+            
+            document.getElementById('inventoryTitle').innerText = "📋 Live Master Inventory";
+            renderInventory(); populateDropdown();
+
+        } catch (err) {
+            alert("Connection Failed: " + err.message);
+            document.getElementById('loginBtn').disabled = false;
+            document.getElementById('loginBtn').innerText = "Login & Fetch Vault Data";
+        }
     }
 
-    async function fetchInventory() {
-        try {
-            const res = await fetch(`https://api.github.com/repos/${localStorage.getItem('ghOwner')}/${localStorage.getItem('ghRepo')}/contents/members.csv`, {
-                headers: { 'Authorization': `token ${localStorage.getItem('ghToken')}`, 'Accept': 'application/vnd.github.v3+json' }
-            });
-            if (res.status === 404) { renderInventory(); return; }
-            const data = await res.json(); githubData.sha = data.sha; githubData.content = decodeURIComponent(escape(atob(data.content)));
-            renderInventory(); populateDropdown();
-        } catch (e) { alert("Failed to fetch inventory from GitHub."); }
+    async function getSigningKey() {
+        return await window.crypto.subtle.importKey(
+            "jwk", JSON.parse(rawPrivateKeyJson), { name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]
+        );
     }
 
     function renderInventory() {
@@ -172,6 +216,7 @@
                 </td>
             </tr>`;
         }
+        if(count === 0) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No badges found.</td></tr>`;
     }
 
     function populateDropdown() {
@@ -184,11 +229,10 @@
         }
     }
 
-    // Fixed CSV Parser: Automatically strips quotes to preserve pure Base64 strings
     function parseCSVLine(text) {
         if (!text) return []; let result = []; let cur = ''; let inQuotes = false;
         for (let i = 0; i < text.length; i++) {
-            if (text[i] === '"') { inQuotes = !inQuotes; } // Skip adding quote
+            if (text[i] === '"') { inQuotes = !inQuotes; }
             else if (text[i] === ',' && !inQuotes) { result.push(cur.trim()); cur = ''; }
             else { cur += text[i]; }
         }
@@ -271,11 +315,12 @@
             document.getElementById('qrcode').innerHTML = "";
             new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.L });
             document.getElementById('badgeContainer').style.display = "block";
-            alert("Saved and Synced!");
+            alert("Saved and Synced! You can download the PDF below.");
         } catch (err) { alert("Error generating/syncing."); } finally { document.getElementById('issueBtn').disabled = false; }
     }
 
     async function viewRowBadge(lineIdx) {
+        switchTab('issue');
         const cols = parseCSVLine(githubData.content.split('\n')[lineIdx]);
         document.getElementById('name').value = cols[0]; document.getElementById('role').value = cols[1];
         document.getElementById('email').value = cols[2]; document.getElementById('phone').value = cols[3];
@@ -298,7 +343,7 @@
         document.getElementById('qrcode').innerHTML = "";
         new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.L });
         document.getElementById('badgeContainer').style.display = "block";
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        document.getElementById('tab-issue').scrollTo({ top: document.getElementById('tab-issue').scrollHeight, behavior: 'smooth' });
     }
 
     async function downloadRowPDF(lineIdx) { await viewRowBadge(lineIdx); downloadBadgePDF(); }
@@ -321,7 +366,8 @@
 
         doc.save(`${document.getElementById('name').value.replace(/\s+/g, '_')}_Badge.pdf`); document.body.removeChild(tempDiv);
     }
-    function logout() { rawPrivateKeyJson = null; githubData = { sha: "", content: "" }; }
+    
+    function logout() { rawPrivateKeyJson = null; githubData = { sha: "", content: "" }; document.getElementById('setupScreen').style.display = 'flex'; document.getElementById('tabsNav').style.display = 'none'; document.getElementById('tab-inventory').style.display = 'none'; document.getElementById('tab-issue').style.display = 'none'; }
 </script>
 </body>
 </html>
