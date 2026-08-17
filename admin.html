@@ -38,7 +38,7 @@
     <input type="text" id="ghOwner" placeholder="GitHub Username">
     <input type="text" id="ghRepo" placeholder="Private Repo Name" value="Badge_Details">
     <input type="password" id="ghToken" placeholder="GitHub Personal Access Token (PAT)">
-    <p style="font-size: 10px; color: #666; margin:3px 0 2px 0;">Select ECDSA Private Key JSON File:</p>
+    <p style="font-size: 10px; color: #666; margin:3px 0 2px 0;">Select NEW ECDSA Private Key File (.json):</p>
     <input type="file" id="privateKeyFile" accept=".json" onchange="loadPrivateKey(event)">
     <button onclick="loginAndFetch()">Login & Sync Inventory</button>
     <a href="index.html" class="nav-link">← Back to Verifier</a>
@@ -98,9 +98,10 @@
 </div>
 
 <script>
+    // UPDATE YOUR PASSWORD HASH HERE IF NEEDED
     const ALLOWED_PASSWORD_HASHES = ["240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"]; 
     
-    let rawPrivateKeyJson = null;
+    let loadedPrivateKeyJWK = null;
     let githubData = { sha: "", content: "Name,Role,Email,Phone,ValidityDate,PhotoURL\n" };
     let mediaStream = null;
     let currentSignedJwt = "";
@@ -109,22 +110,32 @@
         document.getElementById('ghOwner').value = localStorage.getItem('ghOwner') || '';
         document.getElementById('ghRepo').value = localStorage.getItem('ghRepo') || 'Badge_Details';
         document.getElementById('ghToken').value = localStorage.getItem('ghToken') || '';
-        const defaultExpiry = new Date(); defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
+        
+        const defaultExpiry = new Date(); 
+        defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
         document.getElementById('expiryDate').value = defaultExpiry.toISOString().split('T')[0];
     };
 
     function loadPrivateKey(event) {
-        const file = event.target.files[0]; if (!file) return;
+        const file = event.target.files[0];
+        if (!file) return;
         const reader = new FileReader();
-        reader.onload = (e) => { rawPrivateKeyJson = e.target.result; alert("ECDSA Private Key Loaded!"); };
+        reader.onload = async (e) => {
+            try {
+                // EXPLICITLY IMPORT AS ECDSA
+                loadedPrivateKeyJWK = await window.crypto.subtle.importKey(
+                    "jwk", 
+                    JSON.parse(e.target.result), 
+                    { name: "ECDSA", namedCurve: "P-256" }, 
+                    true, 
+                    ["sign"]
+                );
+                alert("✅ ECDSA Private Key Loaded Successfully!");
+            } catch (err) { 
+                alert("❌ Error: You uploaded the old RSA key. Please upload the new ecdsa-private-key.json file."); 
+            }
+        };
         reader.readAsText(file);
-    }
-
-    async function getSigningKey() {
-        if (!rawPrivateKeyJson) throw new Error("Private key file not loaded.");
-        return await window.crypto.subtle.importKey(
-            "jwk", JSON.parse(rawPrivateKeyJson), { name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]
-        );
     }
 
     async function loginAndFetch() {
@@ -132,7 +143,10 @@
         const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pass));
         const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-        if (!ALLOWED_PASSWORD_HASHES.includes(hashHex) || !rawPrivateKeyJson) { alert("Incorrect password or missing ECDSA Key."); return; }
+        if (!ALLOWED_PASSWORD_HASHES.includes(hashHex) || !loadedPrivateKeyJWK) { 
+            alert("Incorrect password or missing ECDSA Key."); 
+            return; 
+        }
 
         localStorage.setItem('ghOwner', document.getElementById('ghOwner').value.trim());
         localStorage.setItem('ghRepo', document.getElementById('ghRepo').value.trim());
@@ -149,9 +163,11 @@
                 headers: { 'Authorization': `token ${localStorage.getItem('ghToken')}`, 'Accept': 'application/vnd.github.v3+json' }
             });
             if (res.status === 404) { renderInventory(); return; }
-            const data = await res.json(); githubData.sha = data.sha; githubData.content = decodeURIComponent(escape(atob(data.content)));
+            const data = await res.json(); 
+            githubData.sha = data.sha; 
+            githubData.content = decodeURIComponent(escape(atob(data.content)));
             renderInventory(); populateDropdown();
-        } catch (e) { alert("Failed to fetch inventory."); }
+        } catch (e) { alert("Failed to fetch inventory from GitHub."); }
     }
 
     function renderInventory() {
@@ -162,8 +178,8 @@
             const cols = parseCSVLine(lines[i]); if(cols.length < 5) continue; count++;
             const status = Date.now() > new Date(cols[4]).getTime() ? '<span style="color:red">Expired</span>' : '<span style="color:green">Active</span>';
             tbody.innerHTML += `<tr><td>${cols[0]}</td><td>${cols[1]}</td><td>${status}</td>
-                <td><button onclick="viewRowBadge(${i})" style="padding:2px; background:#3182ce; font-size:9px;">👁️</button>
-                <button onclick="downloadRowPDF(${i})" style="padding:2px; background:#28a745; font-size:9px;">📥</button></td></tr>`;
+                <td><button onclick="viewRowBadge(${i})" style="padding:2px 4px; background:#3182ce; font-size:9px; margin-right:2px;">👁️</button>
+                <button onclick="downloadRowPDF(${i})" style="padding:2px 4px; background:#28a745; font-size:9px;">📥</button></td></tr>`;
         }
     }
 
@@ -230,16 +246,20 @@
         document.getElementById('issueBtn').disabled = true;
 
         try {
-            const privateKey = await getSigningKey();
             const expTimestamp = new Date(expiryStr + "T23:59:59").getTime();
-            const headerB64 = btoa(JSON.stringify({ alg: "ES256", typ: "JWT" }));
             
-            // MINIFIED PAYLOAD FOR TINY QR CODES
+            // USE ECDSA ALGORITHM
+            const headerB64 = btoa(JSON.stringify({ alg: "ES256", typ: "JWT" }));
             const payloadB64 = btoa(JSON.stringify({ n: name, r: role, e: email, p: phone, x: expTimestamp }));
             const unsignedToken = `${headerB64}.${payloadB64}`;
 
-            // ECDSA SIGNATURE
-            const signatureBuffer = await window.crypto.subtle.sign({ name: "ECDSA", hash: { name: "SHA-256" } }, privateKey, new TextEncoder().encode(unsignedToken));
+            // SIGN WITH ECDSA
+            const signatureBuffer = await window.crypto.subtle.sign(
+                { name: "ECDSA", hash: { name: "SHA-256" } }, 
+                loadedPrivateKeyJWK, 
+                new TextEncoder().encode(unsignedToken)
+            );
+            
             const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
             currentSignedJwt = `${unsignedToken}.${signatureB64}`;
 
@@ -269,12 +289,25 @@
         document.getElementById('email').value = cols[2]; document.getElementById('phone').value = cols[3];
         document.getElementById('expiryDate').value = cols[4]; document.getElementById('photoData').value = (cols[5] || '').replace(/^"|"$/g, '');
         
-        const privateKey = await getSigningKey();
         const payloadB64 = btoa(JSON.stringify({ n: cols[0], r: cols[1], e: cols[2], p: cols[3], x: new Date(cols[4] + "T23:59:59").getTime() }));
         const unsignedToken = `${btoa(JSON.stringify({ alg: "ES256", typ: "JWT" }))}.${payloadB64}`;
-        const signatureBuffer = await window.crypto.subtle.sign({ name: "ECDSA", hash: { name: "SHA-256" } }, privateKey, new TextEncoder().encode(unsignedToken));
+        
+        // SIGN WITH ECDSA
+        const signatureBuffer = await window.crypto.subtle.sign(
+            { name: "ECDSA", hash: { name: "SHA-256" } }, 
+            loadedPrivateKeyJWK, 
+            new TextEncoder().encode(unsignedToken)
+        );
         currentSignedJwt = `${unsignedToken}.${btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
         
+        document.getElementById('bName').innerText = cols[0];
+        document.getElementById('bRole').innerText = `${cols[1].toUpperCase()} (Exp: ${cols[4]})`;
+        
+        const photoDataUrl = (cols[5] || '').replace(/^"|"$/g, '');
+        const photoImg = document.getElementById('bPhoto');
+        if(photoDataUrl && photoDataUrl.startsWith('data:image')) { photoImg.src = photoDataUrl; photoImg.style.display = 'block'; } 
+        else { photoImg.style.display = 'none'; }
+
         document.getElementById('qrcode').innerHTML = "";
         new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.L });
         document.getElementById('badgeContainer').style.display = "block";
@@ -300,7 +333,8 @@
 
         doc.save(`${document.getElementById('name').value.replace(/\s+/g, '_')}_Badge.pdf`); document.body.removeChild(tempDiv);
     }
-    function logout() { rawPrivateKeyJson = null; githubData = { sha: "", content: "" }; }
+    
+    function logout() { loadedPrivateKeyJWK = null; githubData = { sha: "", content: "" }; }
 </script>
 </body>
 </html>
