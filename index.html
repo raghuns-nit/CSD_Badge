@@ -81,7 +81,10 @@
         resultDiv.innerHTML = "Scanning for QR code...";
         scanning = true;
 
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(s => {
+        // REQUEST HD CAMERA FOR CRISP SCANNING
+        navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
+        }).then(s => {
             stream = s;
             video.srcObject = stream;
             requestAnimationFrame(tick);
@@ -97,7 +100,6 @@
         document.getElementById('menuView').style.display = 'flex';
     }
 
-    // Non-blocking async tick loop
     async function tick() {
         if (!scanning) return;
         if (video.readyState === video.HAVE_ENOUGH_DATA && !isProcessingFrame) {
@@ -123,8 +125,8 @@
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 const page = await pdf.getPage(1);
                 
-                // Scale 3.0 dramatically increases resolution so QR codes are perfectly crisp
-                const viewport = page.getViewport({ scale: 3.0 });
+                // High scale ensures the QR blocks are drawn clearly
+                const viewport = page.getViewport({ scale: 2.5 });
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
@@ -142,60 +144,30 @@
                 reader.readAsDataURL(file);
             }
         } catch (err) {
-            resultDiv.innerHTML = `<p class="invalid">❌ Error processing file format.</p>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ Error processing file.</p>`;
         }
     }
 
-    // Hybrid Scanning Engine
     async function processImageSource(source, isManual = false) {
         if (!isManual && !scanning) return;
 
-        // 1. Try Native OS Machine Learning Scanner (Extremely Fast)
-        if ('BarcodeDetector' in window) {
-            try {
-                if (!window.barcodeDetectorInst) {
-                    window.barcodeDetectorInst = new BarcodeDetector({ formats: ['qr_code'] });
-                }
-                const barcodes = await window.barcodeDetectorInst.detect(source);
-                if (barcodes.length > 0) {
-                    handleQRResult(barcodes[0].rawValue);
-                    return;
-                }
-            } catch (e) { /* Ignore native errors and fallback */ }
-        }
-
-        // 2. Fallback Software Scanner (jsQR)
         const canvas = document.createElement('canvas');
-        const sourceW = source.videoWidth || source.width || source.naturalWidth || 600;
-        const sourceH = source.videoHeight || source.height || source.naturalHeight || 600;
-        
-        // Prevent huge images (like PDFs) from freezing the software fallback CPU
-        const maxDim = 1200; 
-        const scale = (sourceW > maxDim || sourceH > maxDim) ? Math.min(maxDim / sourceW, maxDim / sourceH) : 1;
-        
-        canvas.width = sourceW * scale;
-        canvas.height = sourceH * scale;
+        canvas.width = source.videoWidth || source.width || 800;
+        canvas.height = source.videoHeight || source.height || 800;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
         
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Use inversion attempts only on manual uploads so live video stays fast
-        const config = isManual ? { inversionAttempts: "attemptBoth" } : { inversionAttempts: "dontInvert" };
-        const code = jsQR(imageData.data, imageData.width, imageData.height, config);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
 
         if (code) {
-            handleQRResult(code.data);
+            scanning = false;
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            document.getElementById('controlsBar').style.display = 'none';
+            verifyToken(code.data);
         } else if (isManual) {
-            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found. Ensure the badge is clear and not highly blurred.</p>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found. Ensure the image is clear.</p>`;
         }
-    }
-
-    function handleQRResult(jwtString) {
-        scanning = false;
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        document.getElementById('controlsBar').style.display = 'none';
-        verifyToken(jwtString);
     }
 
     async function verifyToken(jwtString) {
