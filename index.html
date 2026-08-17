@@ -6,9 +6,7 @@
     <title>Team ID Verifier</title>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    </script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
     <style>
         body { font-family: -apple-system, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; box-sizing: border-box; }
         .header { background: #1a365d; color: white; padding: 12px; font-size: 16px; font-weight: bold; }
@@ -35,7 +33,6 @@
 <body>
 
 <div class="header">Team ID Portal</div>
-
 <div class="content">
     <div id="menuView">
         <button class="big-btn" onclick="startScanner()">🔍 Verify Badge</button>
@@ -43,173 +40,142 @@
     </div>
 
     <div id="scannerView">
-        <div class="camera-container">
-            <video id="preview" autoplay playsinline muted></video>
-        </div>
-        
+        <div class="camera-container"><video id="preview" autoplay playsinline muted></video></div>
         <div class="scan-controls" id="controlsBar">
             <button class="scan-btn" onclick="captureManualFrame()">📸 Read Frame</button>
-            <label class="scan-btn" style="background: #4a5568; line-height: 20px;">
-                📁 Upload Img/PDF
-                <input type="file" class="file-upload" accept="image/*,application/pdf" onchange="handleFileUpload(event)">
-            </label>
+            <label class="scan-btn" style="background: #4a5568; line-height: 20px;">📁 Upload Img/PDF<input type="file" class="file-upload" accept="image/*,application/pdf" onchange="handleFileUpload(event)"></label>
         </div>
-
         <div id="result">Point camera at QR code or upload Badge file...</div>
         <div class="back-btn" onclick="stopScanner()">← Back to Menu</div>
     </div>
 </div>
 
 <script>
-    // PASTE YOUR PUBLIC KEY JWK HERE
+    // PASTE YOUR NEW ECDSA PUBLIC KEY JWK HERE
     const PUBLIC_KEY_JWK = {
-        kty: "RSA",
-        n: "zzLlxb6HgJinHJuPTd1WGGpahZ9gkpxVwo2QPtB4W7TAJahYAPwzJOp7ZutxgSJyMhpzRrsAwyXSCYLGcUzYmMFZ6CQTiB5PSRwAfwsZYJzjE6HYc0rs-_U73LzI940hUKfYuXXdTohhT7Y4amS8sNppFLsaKg015XEnXryx8u0uI825jJyhfm9LakXnJmyQPnBAQbTnMihd1xqRzfTs0fvdDjxHhdtc5HPGOLLvo4iC48O33-wO1AzKbB3brJRraDR304dBMRywWdqzw0HxCz9s8wgbh1mEcy4tahuzzkgpoeFwvu0Zh6pMy4Gz1jVaftDsoCPCD6PRsh_nbq0UZQ",
-        e: "AQAB"
+  "crv": "P-256",
+  "ext": true,
+  "key_ops": [
+    "verify"
+  ],
+  "kty": "EC",
+  "x": "mlXQIEiXu_WCWFEozlGKdNKfdjYTPhg_IWKrdfqTKxg",
+  "y": "dqFlXmUhlImXtabF7sS_rrOUvQ0AOksYhCSHULN0ArU"
+   };
+        // REPLACE WITH GENERATED PUBLIC KEY
     };
 
-    let stream = null;
-    let scanning = false;
-    let isProcessingFrame = false;
-    const video = document.getElementById('preview');
-    const resultDiv = document.getElementById('result');
+    let stream = null; let scanning = false; let isProcessingFrame = false;
+    const video = document.getElementById('preview'); const resultDiv = document.getElementById('result');
 
     function startScanner() {
         document.getElementById('menuView').style.display = 'none';
         document.getElementById('scannerView').style.display = 'flex';
         document.getElementById('controlsBar').style.display = 'flex';
-        resultDiv.innerHTML = "Scanning for QR code...";
-        scanning = true;
+        resultDiv.innerHTML = "Scanning for QR code..."; scanning = true;
 
-        // REQUEST HD CAMERA FOR CRISP SCANNING
-        navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
-        }).then(s => {
-            stream = s;
-            video.srcObject = stream;
-            requestAnimationFrame(tick);
-        }).catch(err => {
-            resultDiv.innerHTML = `<p class="invalid">Camera access denied.</p>`;
-        });
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } }).then(s => {
+            stream = s; video.srcObject = stream; requestAnimationFrame(tick);
+        }).catch(err => { resultDiv.innerHTML = `<p class="invalid">Camera access denied.</p>`; });
     }
 
     function stopScanner() {
-        scanning = false;
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        document.getElementById('scannerView').style.display = 'none';
-        document.getElementById('menuView').style.display = 'flex';
+        scanning = false; if (stream) stream.getTracks().forEach(t => t.stop());
+        document.getElementById('scannerView').style.display = 'none'; document.getElementById('menuView').style.display = 'flex';
     }
 
     async function tick() {
         if (!scanning) return;
         if (video.readyState === video.HAVE_ENOUGH_DATA && !isProcessingFrame) {
-            isProcessingFrame = true;
-            await processImageSource(video, false);
-            isProcessingFrame = false;
+            isProcessingFrame = true; await processImageSource(video, false); isProcessingFrame = false;
         }
         if (scanning) requestAnimationFrame(tick);
     }
 
-    function captureManualFrame() {
-        processImageSource(video, true);
-    }
+    function captureManualFrame() { processImageSource(video, true); }
 
     async function handleFileUpload(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-
+        const file = event.target.files[0]; if (!file) return;
         resultDiv.innerHTML = "Processing uploaded file...";
         try {
             if (file.type === "application/pdf") {
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                const page = await pdf.getPage(1);
-                
-                // High scale ensures the QR blocks are drawn clearly
-                const viewport = page.getViewport({ scale: 2.5 });
-                const canvas = document.createElement('canvas');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-                const ctx = canvas.getContext('2d');
-                
-                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                const arrayBuffer = await file.arrayBuffer(); const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const page = await pdf.getPage(1); const viewport = page.getViewport({ scale: 2.5 });
+                const canvas = document.createElement('canvas'); canvas.width = viewport.width; canvas.height = viewport.height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
                 await processImageSource(canvas, true);
             } else {
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    const img = new Image();
-                    img.onload = async () => await processImageSource(img, true);
-                    img.src = e.target.result;
-                };
-                reader.readAsDataURL(file);
+                    const img = new Image(); img.onload = async () => await processImageSource(img, true); img.src = e.target.result;
+                }; reader.readAsDataURL(file);
             }
-        } catch (err) {
-            resultDiv.innerHTML = `<p class="invalid">❌ Error processing file.</p>`;
-        }
+        } catch (err) { resultDiv.innerHTML = `<p class="invalid">❌ Error processing file.</p>`; }
     }
 
     async function processImageSource(source, isManual = false) {
         if (!isManual && !scanning) return;
+        
+        if ('BarcodeDetector' in window) {
+            try {
+                if (!window.barcodeDetectorInst) window.barcodeDetectorInst = new BarcodeDetector({ formats: ['qr_code'] });
+                const barcodes = await window.barcodeDetectorInst.detect(source);
+                if (barcodes.length > 0) { handleQRResult(barcodes[0].rawValue); return; }
+            } catch (e) {}
+        }
 
         const canvas = document.createElement('canvas');
-        canvas.width = source.videoWidth || source.width || 800;
-        canvas.height = source.videoHeight || source.height || 800;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        canvas.width = source.videoWidth || source.width || 800; canvas.height = source.videoHeight || source.height || 800;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
         
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
 
-        if (code) {
-            scanning = false;
-            if (stream) stream.getTracks().forEach(t => t.stop());
-            document.getElementById('controlsBar').style.display = 'none';
-            verifyToken(code.data);
-        } else if (isManual) {
-            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found. Ensure the image is clear.</p>`;
-        }
+        if (code) { handleQRResult(code.data); } 
+        else if (isManual) { resultDiv.innerHTML = `<p class="invalid">❌ No QR code found.</p>`; }
+    }
+
+    function handleQRResult(jwtString) {
+        scanning = false; if (stream) stream.getTracks().forEach(t => t.stop());
+        document.getElementById('controlsBar').style.display = 'none'; verifyToken(jwtString);
     }
 
     async function verifyToken(jwtString) {
         try {
-            const parts = jwtString.split('.');
-            if (parts.length !== 3) throw new Error("Invalid ID format");
+            const parts = jwtString.split('.'); if (parts.length !== 3) throw new Error();
+            const payload = JSON.parse(atob(parts[1]));
             
-            const headerB64 = parts[0];
-            const payloadB64 = parts[1];
-            const signatureB64 = parts[2];
+            // Map the minified payload
+            const data = { name: payload.n, role: payload.r, email: payload.e, phone: payload.p, exp: payload.x };
             
-            const payload = JSON.parse(atob(payloadB64));
-            
-            if (Date.now() > payload.exp) {
-                resultDiv.innerHTML = `<p class="invalid">❌ ID EXPIRED</p><p style="margin:2px 0;"><strong>Name:</strong> ${payload.name}</p><button class="big-btn" style="padding:6px; font-size:11px; margin-top:8px;" onclick="startScanner()">🔄 Scan Next</button>`;
-                return;
+            if (Date.now() > data.exp) {
+                resultDiv.innerHTML = `<p class="invalid">❌ ID EXPIRED</p><p><strong>${data.name}</strong></p><button class="big-btn" onclick="startScanner()">🔄 Scan Next</button>`; return;
             }
 
+            // ECDSA VERIFICATION
             const key = await window.crypto.subtle.importKey(
-                "jwk", PUBLIC_KEY_JWK, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]
+                "jwk", PUBLIC_KEY_JWK, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]
             );
-            const dataToVerify = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-            const signature = Uint8Array.from(atob(signatureB64.replace(/_/g, '/').replace(/-/g, '+')), c => c.charCodeAt(0));
-            const isValid = await window.crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, dataToVerify);
+            const isValid = await window.crypto.subtle.verify(
+                { name: "ECDSA", hash: { name: "SHA-256" } }, key, 
+                Uint8Array.from(atob(parts[2].replace(/_/g, '/').replace(/-/g, '+')), c => c.charCodeAt(0)), 
+                new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
+            );
 
             if (isValid) {
                 resultDiv.innerHTML = `
                     <p class="valid">✅ VERIFIED SECURE ID</p>
-                    <p style="margin:2px 0;"><strong>Name:</strong> ${payload.name}</p>
-                    <p style="margin:2px 0;"><strong>Role:</strong> ${payload.role}</p>
-                    <p style="margin:2px 0;"><strong>Email:</strong> ${payload.email}</p>
-                    <p style="margin:2px 0;"><strong>Phone:</strong> ${payload.phone}</p>
+                    <p style="margin:2px 0;"><strong>Name:</strong> ${data.name}</p>
+                    <p style="margin:2px 0;"><strong>Role:</strong> ${data.role}</p>
+                    <p style="margin:2px 0;"><strong>Email:</strong> ${data.email}</p>
+                    <p style="margin:2px 0;"><strong>Phone:</strong> ${data.phone}</p>
                     <button class="big-btn" style="padding:6px; font-size:11px; margin-top:6px; width:100%;" onclick="startScanner()">🔄 Scan Next Badge</button>
                 `;
-            } else {
-                resultDiv.innerHTML = `<p class="invalid">⚠️ TAMPERED OR FAKE ID</p><button class="big-btn" style="padding:6px; font-size:11px; margin-top:8px;" onclick="startScanner()">🔄 Scan Next</button>`;
-            }
+            } else { throw new Error(); }
         } catch (e) {
-            resultDiv.innerHTML = `<p class="invalid">❌ Unrecognized Badge Format</p><button class="big-btn" style="padding:6px; font-size:11px; margin-top:8px;" onclick="startScanner()">🔄 Scan Next</button>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ Invalid/Fake Badge Format</p><button class="big-btn" style="padding:6px; font-size:11px; margin-top:8px;" onclick="startScanner()">🔄 Scan Next</button>`;
         }
     }
 </script>
-
 </body>
 </html>
