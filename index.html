@@ -42,7 +42,7 @@
     <div id="scannerView">
         <div class="camera-container"><video id="preview" autoplay playsinline muted></video></div>
         <div class="scan-controls" id="controlsBar">
-            <button class="scan-btn" onclick="captureManualFrame()">📸 Read Frame</button>
+            <button class="scan-btn" onclick="captureManualFrame()" id="readFrameBtn">📸 Read Frame</button>
             <label class="scan-btn" style="background: #4a5568; line-height: 20px;">📁 Upload Img/PDF<input type="file" class="file-upload" accept="image/*,application/pdf" onchange="handleFileUpload(event)"></label>
         </div>
         <div id="result">Point camera at QR code or upload Badge file...</div>
@@ -51,7 +51,7 @@
 </div>
 
 <script>
-    // PASTE YOUR NEW ECDSA PUBLIC KEY JWK HERE
+    // PASTE YOUR ECDSA PUBLIC KEY JWK HERE
     const PUBLIC_KEY_JWK = {
   "crv": "P-256",
   "ext": true,
@@ -61,9 +61,7 @@
   "kty": "EC",
   "x": "mlXQIEiXu_WCWFEozlGKdNKfdjYTPhg_IWKrdfqTKxg",
   "y": "dqFlXmUhlImXtabF7sS_rrOUvQ0AOksYhCSHULN0ArU"
-   };
-        // REPLACE WITH GENERATED PUBLIC KEY
-    };
+                           };
 
     let stream = null; let scanning = false; let isProcessingFrame = false;
     const video = document.getElementById('preview'); const resultDiv = document.getElementById('result');
@@ -74,9 +72,18 @@
         document.getElementById('controlsBar').style.display = 'flex';
         resultDiv.innerHTML = "Scanning for QR code..."; scanning = true;
 
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } }).then(s => {
-            stream = s; video.srcObject = stream; requestAnimationFrame(tick);
-        }).catch(err => { resultDiv.innerHTML = `<p class="invalid">Camera access denied.</p>`; });
+        // Graceful fallback if camera is blocked/unavailable
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } }).then(s => {
+                stream = s; video.srcObject = stream; requestAnimationFrame(tick);
+            }).catch(err => { 
+                resultDiv.innerHTML = `<p class="invalid">Camera unavailable. Please use the Upload button.</p>`; 
+                document.getElementById('readFrameBtn').style.display = 'none';
+            });
+        } else {
+            resultDiv.innerHTML = `<p class="invalid">Camera API blocked. Please use the Upload button.</p>`;
+            document.getElementById('readFrameBtn').style.display = 'none';
+        }
     }
 
     function stopScanner() {
@@ -144,15 +151,12 @@
         try {
             const parts = jwtString.split('.'); if (parts.length !== 3) throw new Error();
             const payload = JSON.parse(atob(parts[1]));
-            
-            // Map the minified payload
             const data = { name: payload.n, role: payload.r, email: payload.e, phone: payload.p, exp: payload.x };
             
             if (Date.now() > data.exp) {
                 resultDiv.innerHTML = `<p class="invalid">❌ ID EXPIRED</p><p><strong>${data.name}</strong></p><button class="big-btn" onclick="startScanner()">🔄 Scan Next</button>`; return;
             }
 
-            // ECDSA VERIFICATION
             const key = await window.crypto.subtle.importKey(
                 "jwk", PUBLIC_KEY_JWK, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]
             );
