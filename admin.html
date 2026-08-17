@@ -34,7 +34,7 @@
         .camera-wrapper { width: 100%; height: 160px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
         #cameraStream { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
 
-        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 10px; border-radius: 6px; margin-top: 5px; background: #fff; }
+        .badge-preview { display: none; text-align: center; border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-top: 5px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .nav-link { color: #007bff; text-decoration: none; font-size: 11px; text-align: center; display: block; margin-top: 5px; padding-bottom: 10px; }
     </style>
 </head>
@@ -54,7 +54,7 @@
 </div>
 
 <div class="tab-container" id="tabsNav" style="display: none;">
-    <button class="tab-btn active" id="btn-inventory" onclick="switchTab('inventory')">📋 Live Inventory</button>
+    <button class="tab-btn active" id="btn-inventory" onclick="switchTab('inventory')">📋 Existing Badges</button>
     <button class="tab-btn" id="btn-issue" onclick="switchTab('issue')">➕ Create / Edit</button>
 </div>
 
@@ -68,6 +68,16 @@
             </table>
         </div>
     </div>
+    
+    <div class="badge-preview" id="inventoryBadgeContainer">
+        <h3 style="margin-bottom: 2px;" id="invBName"></h3>
+        <p style="font-size: 11px; color: #666; margin: 0 0 5px 0;" id="invBRole"></p>
+        <img id="invBPhoto" src="" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; display: none; margin: 0 auto 5px; border: 2px solid #ccc;">
+        <div id="invQrcode" style="display: flex; justify-content: center; margin-bottom: 5px;"></div>
+        <p style="font-size: 10px; color: green; margin: 4px 0; font-weight: bold;">✅ Verified Vault Record</p>
+        <button onclick="downloadBadgePDF()" style="background: #28a745; padding: 8px;">📥 Download Badge PDF</button>
+    </div>
+
     <a href="index.html" class="nav-link" onclick="logout()">← Logout / Back to Verifier</a>
 </div>
 
@@ -153,7 +163,6 @@
         document.getElementById('loginBtn').innerText = "Connecting to Vault...";
 
         try {
-            // Fetch Private Key Directly from GitHub
             const keyRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/ecdsa-private-key.json`, {
                 headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
             });
@@ -165,7 +174,6 @@
             const keyData = await keyRes.json();
             rawPrivateKeyJson = decodeURIComponent(escape(atob(keyData.content)));
 
-            // Fetch Member CSV
             const csvRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/members.csv`, {
                 headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
             });
@@ -176,7 +184,6 @@
                 githubData.content = decodeURIComponent(escape(atob(csvData.content)));
             }
 
-            // Save details & Switch UI
             localStorage.setItem('ghOwner', owner);
             localStorage.setItem('ghRepo', repo);
             localStorage.setItem('ghToken', token);
@@ -185,7 +192,7 @@
             document.getElementById('tabsNav').style.display = 'flex';
             document.getElementById('tab-inventory').style.display = 'flex';
             
-            document.getElementById('inventoryTitle').innerText = "📋 Live Master Inventory";
+            document.getElementById('inventoryTitle').innerText = "📋 Existing Badges";
             renderInventory(); populateDropdown();
 
         } catch (err) {
@@ -315,16 +322,18 @@
             document.getElementById('qrcode').innerHTML = "";
             new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.L });
             document.getElementById('badgeContainer').style.display = "block";
+            
             alert("Saved and Synced! You can download the PDF below.");
         } catch (err) { alert("Error generating/syncing."); } finally { document.getElementById('issueBtn').disabled = false; }
     }
 
     async function viewRowBadge(lineIdx) {
-        switchTab('issue');
         const cols = parseCSVLine(githubData.content.split('\n')[lineIdx]);
+        
+        // Fill invisible form fields silently so PDF generation function works universally
         document.getElementById('name').value = cols[0]; document.getElementById('role').value = cols[1];
         document.getElementById('email').value = cols[2]; document.getElementById('phone').value = cols[3];
-        document.getElementById('expiryDate').value = cols[4]; document.getElementById('photoData').value = cols[5] || '';
+        document.getElementById('expiryDate').value = cols[4]; document.getElementById('photoData').value = (cols[5] || '').replace(/^"|"$/g, '');
         
         const privateKey = await getSigningKey();
         const payloadB64 = btoa(JSON.stringify({ n: cols[0], r: cols[1], e: cols[2], p: cols[3], x: new Date(cols[4] + "T23:59:59").getTime() }));
@@ -332,18 +341,20 @@
         const signatureBuffer = await window.crypto.subtle.sign({ name: "ECDSA", hash: { name: "SHA-256" } }, privateKey, new TextEncoder().encode(unsignedToken));
         currentSignedJwt = `${unsignedToken}.${btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
         
-        document.getElementById('bName').innerText = cols[0];
-        document.getElementById('bRole').innerText = `${cols[1].toUpperCase()} (Exp: ${cols[4]})`;
+        // Populate the dedicated INVENTORY badge container
+        document.getElementById('invBName').innerText = cols[0];
+        document.getElementById('invBRole').innerText = `${cols[1].toUpperCase()} (Exp: ${cols[4]})`;
         
-        const photoDataUrl = cols[5] || '';
-        const photoImg = document.getElementById('bPhoto');
+        const photoDataUrl = (cols[5] || '').replace(/^"|"$/g, '');
+        const photoImg = document.getElementById('invBPhoto');
         if(photoDataUrl && photoDataUrl.startsWith('data:image')) { photoImg.src = photoDataUrl; photoImg.style.display = 'block'; } 
         else { photoImg.style.display = 'none'; }
 
-        document.getElementById('qrcode').innerHTML = "";
-        new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.L });
-        document.getElementById('badgeContainer').style.display = "block";
-        document.getElementById('tab-issue').scrollTo({ top: document.getElementById('tab-issue').scrollHeight, behavior: 'smooth' });
+        document.getElementById('invQrcode').innerHTML = "";
+        new QRCode(document.getElementById("invQrcode"), { text: currentSignedJwt, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.L });
+        
+        document.getElementById('inventoryBadgeContainer').style.display = "block";
+        document.getElementById('tab-inventory').scrollTo({ top: document.getElementById('tab-inventory').scrollHeight, behavior: 'smooth' });
     }
 
     async function downloadRowPDF(lineIdx) { await viewRowBadge(lineIdx); downloadBadgePDF(); }
