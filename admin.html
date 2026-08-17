@@ -328,7 +328,6 @@
         if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert("Invalid email format."); return; }
         if(!/^[6-9]\d{9}$/.test(phone)) { alert("Enter a valid 10-digit Indian phone number."); return; }
 
-        // --- DUPLICATE ENTRY CHECK ---
         if (editIndex === "") {
             let isDuplicate = false;
             let lines = githubData.content.split('\n');
@@ -339,15 +338,11 @@
                     if (cols[0].trim().toLowerCase() === name.toLowerCase() && 
                         cols[2].trim().toLowerCase() === email.toLowerCase() && 
                         cols[3].trim() === phone) {
-                        isDuplicate = true;
-                        break;
+                        isDuplicate = true; break;
                     }
                 }
             }
-            if (isDuplicate) {
-                alert("❌ Duplicate Entry: A member with this Name, Email, and Phone already exists.");
-                return;
-            }
+            if (isDuplicate) { alert("❌ Duplicate Entry: A member with this Name, Email, and Phone already exists."); return; }
         }
 
         const btn = document.getElementById('issueBtn');
@@ -358,7 +353,7 @@
             const expTimestamp = new Date(expiryStr + "T23:59:59").getTime();
             const headerB64 = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
             
-            // CRITICAL FIX: Only store text data in JWT to keep QR code small and prevent crashes
+            // SMALL PAYLOAD FOR SCANNABILITY
             const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, exp: expTimestamp }));
             const unsignedToken = `${headerB64}.${payloadB64}`;
 
@@ -366,17 +361,12 @@
             const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
             currentSignedJwt = `${unsignedToken}.${signatureB64}`;
 
-            // Photo is saved securely into the CSV storage
             const cleanPhoto = `"${photoBase64}"`;
             const newRow = `${name},${role},${email},${phone},${expiryStr},${cleanPhoto}`;
             
             let lines = githubData.content.split('\n');
-            if (editIndex !== "") {
-                lines[editIndex] = newRow;
-                githubData.content = lines.join('\n');
-            } else {
-                githubData.content = githubData.content.replace(/\n$/, "") + "\n" + newRow;
-            }
+            if (editIndex !== "") { lines[editIndex] = newRow; githubData.content = lines.join('\n'); } 
+            else { githubData.content = githubData.content.replace(/\n$/, "") + "\n" + newRow; }
 
             const owner = localStorage.getItem('ghOwner');
             const repo = localStorage.getItem('ghRepo');
@@ -401,22 +391,18 @@
             renderInventory();
             populateDropdown();
 
-            // Display preview box
             document.getElementById('bName').innerText = name;
             document.getElementById('bRole').innerText = `${role.toUpperCase()} (Exp: ${expiryStr})`;
             const photoImg = document.getElementById('bPhoto');
             if(photoBase64) { photoImg.src = photoBase64; photoImg.style.display = 'block'; } else { photoImg.style.display = 'none'; }
 
             document.getElementById('qrcode').innerHTML = "";
-            new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 100, height: 100 });
+            // High-Resolution & Low-Correction QR for easy scanning
+            new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.L });
             document.getElementById('badgeContainer').style.display = "block";
 
             alert("Badge successfully saved and synced to GitHub!");
-        } catch (err) {
-            alert("Error: " + err.message);
-        } finally {
-            btn.disabled = false; btn.innerText = "Generate, Save & Auto-Sync";
-        }
+        } catch (err) { alert("Error: " + err.message); } finally { btn.disabled = false; btn.innerText = "Generate, Save & Auto-Sync"; }
     }
 
     async function viewRowBadge(lineIdx) {
@@ -433,29 +419,23 @@
             const privateKey = await getSigningKey();
             const expTimestamp = new Date(expiryStr + "T23:59:59").getTime();
             const headerB64 = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-            
-            // CRITICAL FIX: Only store text data in JWT
             const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, exp: expTimestamp }));
             const unsignedToken = `${headerB64}.${payloadB64}`;
             
             const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(unsignedToken));
             const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-            const rowJwt = `${unsignedToken}.${signatureB64}`;
-            currentSignedJwt = rowJwt; // Ensure global var is ready for download
+            currentSignedJwt = `${unsignedToken}.${signatureB64}`;
 
             document.getElementById('bName').innerText = name;
             document.getElementById('bRole').innerText = `${role.toUpperCase()} (Exp: ${expiryStr})`;
             
             const photoImg = document.getElementById('bPhoto');
             if(photoDataUrl && photoDataUrl.startsWith('data:image')) { 
-                photoImg.src = photoDataUrl; 
-                photoImg.style.display = 'block'; 
-            } else { 
-                photoImg.style.display = 'none'; 
-            }
+                photoImg.src = photoDataUrl; photoImg.style.display = 'block'; 
+            } else { photoImg.style.display = 'none'; }
 
             document.getElementById('qrcode').innerHTML = "";
-            new QRCode(document.getElementById("qrcode"), { text: rowJwt, width: 100, height: 100 });
+            new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.L });
             document.getElementById('badgeContainer').style.display = "block";
             
             document.getElementById('name').value = name;
@@ -466,9 +446,7 @@
             document.getElementById('photoData').value = photoDataUrl;
 
             window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-        } catch(e) {
-            alert("Could not render badge view: " + e.message);
-        }
+        } catch(e) { alert("Could not render badge view: " + e.message); }
     }
 
     async function downloadRowPDF(lineIdx) {
@@ -477,6 +455,11 @@
     }
 
     function downloadBadgePDF() {
+        const tempDiv = document.createElement('div');
+        document.body.appendChild(tempDiv);
+        new QRCode(tempDiv, { text: currentSignedJwt, width: 500, height: 500, correctLevel: QRCode.CorrectLevel.L });
+        const qrCanvas = tempDiv.querySelector('canvas');
+
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [85, 110] });
 
@@ -514,16 +497,14 @@
         doc.text(email, 42.5, 52, { align: "center" });
         doc.text(phone, 42.5, 57, { align: "center" });
 
-        const qrCanvas = document.querySelector('#qrcode canvas');
-        if (qrCanvas) {
-            doc.addImage(qrCanvas.toDataURL("image/png"), 'PNG', 24.5, 62, 36, 36);
-        }
+        if (qrCanvas) { doc.addImage(qrCanvas.toDataURL("image/png"), 'PNG', 24.5, 62, 36, 36); }
 
         doc.setFontSize(8);
         doc.setTextColor(150, 150, 150);
         doc.text(`Expires: ${expiryStr}`, 42.5, 103, { align: "center" });
 
         doc.save(`${name.replace(/\s+/g, '_')}_Badge.pdf`);
+        document.body.removeChild(tempDiv);
     }
 
     function logout() { rawPrivateKeyJson = null; githubData = { sha: "", content: "" }; }
