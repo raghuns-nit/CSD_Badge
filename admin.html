@@ -110,9 +110,10 @@
 <script>
     const ALLOWED_PASSWORD_HASHES = ["240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"]; 
     
-    let rawPrivateKeyJson = null; // Store raw JSON string to re-import safely on demand
+    let rawPrivateKeyJson = null;
     let githubData = { sha: "", content: "Name,Role,Email,Phone,ValidityDate,PhotoURL\n" };
     let mediaStream = null;
+    let currentSignedJwt = "";
 
     window.onload = () => {
         document.getElementById('ghOwner').value = localStorage.getItem('ghOwner') || '';
@@ -240,6 +241,7 @@
     }
 
     function parseCSVLine(text) {
+        if (!text) return [];
         let result = [];
         let cur = '';
         let inQuotes = false;
@@ -326,6 +328,28 @@
         if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert("Invalid email format."); return; }
         if(!/^[6-9]\d{9}$/.test(phone)) { alert("Enter a valid 10-digit Indian phone number."); return; }
 
+        // --- DUPLICATE ENTRY CHECK ---
+        if (editIndex === "") {
+            let isDuplicate = false;
+            let lines = githubData.content.split('\n');
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                let cols = parseCSVLine(lines[i]);
+                if (cols.length >= 4) {
+                    if (cols[0].trim().toLowerCase() === name.toLowerCase() && 
+                        cols[2].trim().toLowerCase() === email.toLowerCase() && 
+                        cols[3].trim() === phone) {
+                        isDuplicate = true;
+                        break;
+                    }
+                }
+            }
+            if (isDuplicate) {
+                alert("❌ Duplicate Entry: A member with this Name, Email, and Phone already exists.");
+                return;
+            }
+        }
+
         const btn = document.getElementById('issueBtn');
         btn.disabled = true; btn.innerText = "Syncing with GitHub...";
 
@@ -333,13 +357,16 @@
             const privateKey = await getSigningKey();
             const expTimestamp = new Date(expiryStr + "T23:59:59").getTime();
             const headerB64 = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-            const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, photo: photoBase64, exp: expTimestamp }));
+            
+            // CRITICAL FIX: Only store text data in JWT to keep QR code small and prevent crashes
+            const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, exp: expTimestamp }));
             const unsignedToken = `${headerB64}.${payloadB64}`;
 
             const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(unsignedToken));
             const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-            const signedJwt = `${unsignedToken}.${signatureB64}`;
+            currentSignedJwt = `${unsignedToken}.${signatureB64}`;
 
+            // Photo is saved securely into the CSV storage
             const cleanPhoto = `"${photoBase64}"`;
             const newRow = `${name},${role},${email},${phone},${expiryStr},${cleanPhoto}`;
             
@@ -381,7 +408,7 @@
             if(photoBase64) { photoImg.src = photoBase64; photoImg.style.display = 'block'; } else { photoImg.style.display = 'none'; }
 
             document.getElementById('qrcode').innerHTML = "";
-            new QRCode(document.getElementById("qrcode"), { text: signedJwt, width: 100, height: 100 });
+            new QRCode(document.getElementById("qrcode"), { text: currentSignedJwt, width: 100, height: 100 });
             document.getElementById('badgeContainer').style.display = "block";
 
             alert("Badge successfully saved and synced to GitHub!");
@@ -406,12 +433,15 @@
             const privateKey = await getSigningKey();
             const expTimestamp = new Date(expiryStr + "T23:59:59").getTime();
             const headerB64 = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-            const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, photo: photoDataUrl, exp: expTimestamp }));
+            
+            // CRITICAL FIX: Only store text data in JWT
+            const payloadB64 = btoa(JSON.stringify({ name, role, email, phone, exp: expTimestamp }));
             const unsignedToken = `${headerB64}.${payloadB64}`;
             
             const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(unsignedToken));
             const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
             const rowJwt = `${unsignedToken}.${signatureB64}`;
+            currentSignedJwt = rowJwt; // Ensure global var is ready for download
 
             document.getElementById('bName').innerText = name;
             document.getElementById('bRole').innerText = `${role.toUpperCase()} (Exp: ${expiryStr})`;
