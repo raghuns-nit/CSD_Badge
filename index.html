@@ -44,7 +44,7 @@
 
     <div id="scannerView">
         <div class="camera-container">
-            <video id="preview" autoplay playsinline></video>
+            <video id="preview" autoplay playsinline muted></video>
         </div>
         
         <div class="scan-controls" id="controlsBar">
@@ -55,7 +55,7 @@
             </label>
         </div>
 
-        <div id="result">Scan QR code or upload Badge file...</div>
+        <div id="result">Point camera at QR code or upload Badge file...</div>
         <div class="back-btn" onclick="stopScanner()">← Back to Menu</div>
     </div>
 </div>
@@ -70,6 +70,7 @@
 
     let stream = null;
     let scanning = false;
+    let isProcessingFrame = false;
     const video = document.getElementById('preview');
     const resultDiv = document.getElementById('result');
 
@@ -96,10 +97,13 @@
         document.getElementById('menuView').style.display = 'flex';
     }
 
-    function tick() {
+    // Non-blocking async tick loop
+    async function tick() {
         if (!scanning) return;
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            processImageSource(video, false);
+        if (video.readyState === video.HAVE_ENOUGH_DATA && !isProcessingFrame) {
+            isProcessingFrame = true;
+            await processImageSource(video, false);
+            isProcessingFrame = false;
         }
         if (scanning) requestAnimationFrame(tick);
     }
@@ -118,75 +122,91 @@
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 const page = await pdf.getPage(1);
-                const viewport = page.getViewport({ scale: 2.0 });
                 
+                // Scale 3.0 dramatically increases resolution so QR codes are perfectly crisp
+                const viewport = page.getViewport({ scale: 3.0 });
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
                 const ctx = canvas.getContext('2d');
+                
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-                processCanvasForQR(canvas);
+                await processImageSource(canvas, true);
             } else {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.width || 800;
-                        canvas.height = img.height || 800;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        processCanvasForQR(canvas);
-                    };
+                    img.onload = async () => await processImageSource(img, true);
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(file);
             }
         } catch (err) {
-            resultDiv.innerHTML = `<p class="invalid">❌ Error processing file.</p>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ Error processing file format.</p>`;
         }
     }
 
-    function processImageSource(source, isManual = false) {
+    // Hybrid Scanning Engine
+    async function processImageSource(source, isManual = false) {
         if (!isManual && !scanning) return;
-        const canvas = document.createElement('canvas');
-        canvas.width = source.videoWidth || source.width || 400;
-        canvas.height = source.videoHeight || source.height || 400;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-        processCanvasForQR(canvas, isManual);
-    }
 
-    function processCanvasForQR(canvas, isManual = true) {
-        const ctx = canvas.getContext('2d');
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        let code = jsQR(imageData.data, imageData.width, imageData.height);
-
-        // Fallback scan with downscaling if initial high-res fails
-        if (!code && canvas.width > 800) {
-            const smallCanvas = document.createElement('canvas');
-            smallCanvas.width = 600;
-            smallCanvas.height = Math.floor(canvas.height * (600 / canvas.width));
-            const sCtx = smallCanvas.getContext('2d');
-            sCtx.drawImage(canvas, 0, 0, smallCanvas.width, smallCanvas.height);
-            const sData = sCtx.getImageData(0, 0, smallCanvas.width, smallCanvas.height);
-            code = jsQR(sData.data, sData.width, sData.height);
+        // 1. Try Native OS Machine Learning Scanner (Extremely Fast)
+        if ('BarcodeDetector' in window) {
+            try {
+                if (!window.barcodeDetectorInst) {
+                    window.barcodeDetectorInst = new BarcodeDetector({ formats: ['qr_code'] });
+                }
+                const barcodes = await window.barcodeDetectorInst.detect(source);
+                if (barcodes.length > 0) {
+                    handleQRResult(barcodes[0].rawValue);
+                    return;
+                }
+            } catch (e) { /* Ignore native errors and fallback */ }
         }
+
+        // 2. Fallback Software Scanner (jsQR)
+        const canvas = document.createElement('canvas');
+        const sourceW = source.videoWidth || source.width || source.naturalWidth || 600;
+        const sourceH = source.videoHeight || source.height || source.naturalHeight || 600;
+        
+        // Prevent huge images (like PDFs) from freezing the software fallback CPU
+        const maxDim = 1200; 
+        const scale = (sourceW > maxDim || sourceH > maxDim) ? Math.min(maxDim / sourceW, maxDim / sourceH) : 1;
+        
+        canvas.width = sourceW * scale;
+        canvas.height = sourceH * scale;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Use inversion attempts only on manual uploads so live video stays fast
+        const config = isManual ? { inversionAttempts: "attemptBoth" } : { inversionAttempts: "dontInvert" };
+        const code = jsQR(imageData.data, imageData.width, imageData.height, config);
 
         if (code) {
-            scanning = false;
-            if (stream) stream.getTracks().forEach(t => t.stop());
-            document.getElementById('controlsBar').style.display = 'none';
-            verifyToken(code.data);
+            handleQRResult(code.data);
         } else if (isManual) {
-            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found in uploaded file. Ensure it's a valid badge PDF/image.</p>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found. Ensure the badge is clear and not highly blurred.</p>`;
         }
+    }
+
+    function handleQRResult(jwtString) {
+        scanning = false;
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        document.getElementById('controlsBar').style.display = 'none';
+        verifyToken(jwtString);
     }
 
     async function verifyToken(jwtString) {
         try {
-            const [headerB64, payloadB64, signatureB64] = jwtString.split('.');
-            if (!headerB64 || !payloadB64 || !signatureB64) throw new Error("Invalid format");
+            const parts = jwtString.split('.');
+            if (parts.length !== 3) throw new Error("Invalid ID format");
+            
+            const headerB64 = parts[0];
+            const payloadB64 = parts[1];
+            const signatureB64 = parts[2];
+            
             const payload = JSON.parse(atob(payloadB64));
             
             if (Date.now() > payload.exp) {
@@ -214,7 +234,7 @@
                 resultDiv.innerHTML = `<p class="invalid">⚠️ TAMPERED OR FAKE ID</p><button class="big-btn" style="padding:6px; font-size:11px; margin-top:8px;" onclick="startScanner()">🔄 Scan Next</button>`;
             }
         } catch (e) {
-            resultDiv.innerHTML = `<p class="invalid">❌ Unrecognized Format</p><button class="big-btn" style="padding:6px; font-size:11px; margin-top:8px;" onclick="startScanner()">🔄 Scan Next</button>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ Unrecognized Badge Format</p><button class="big-btn" style="padding:6px; font-size:11px; margin-top:8px;" onclick="startScanner()">🔄 Scan Next</button>`;
         }
     }
 </script>
