@@ -9,25 +9,33 @@
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
     <style>
         body { font-family: -apple-system, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; box-sizing: border-box; }
-        .header { background: #1a365d; color: white; padding: 12px; font-size: 16px; font-weight: bold; }
-        .content { flex: 1; padding: 10px; display: flex; flex-direction: column; justify-content: center; align-items: center; box-sizing: border-box; overflow-y: auto; }
+        .header { background: #1a365d; color: white; padding: 12px; font-size: 16px; font-weight: bold; flex-shrink: 0; }
+        .content { flex: 1; padding: 10px; display: flex; flex-direction: column; justify-content: center; align-items: center; box-sizing: border-box; width: 100%; }
         
         #menuView { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 300px; }
-        .big-btn { background: #3182ce; color: white; border: none; padding: 15px; border-radius: 10px; font-size: 15px; cursor: pointer; font-weight: bold; text-decoration: none; display: block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .big-btn { background: #3182ce; color: white; border: none; padding: 15px; border-radius: 10px; font-size: 15px; cursor: pointer; font-weight: bold; text-decoration: none; display: block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box; }
         .big-btn.admin { background: #4a5568; }
         
         #scannerView { display: none; width: 100%; max-width: 380px; flex-direction: column; align-items: center; }
-        .camera-container { width: 100%; height: 260px; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        
+        /* Camera responsive to fit standard phones without pushing content down */
+        .camera-container { width: 100%; max-height: 40vh; aspect-ratio: 4/3; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         video { width: 100%; height: 100%; object-fit: cover; }
 
         .scan-controls { display: flex; gap: 6px; width: 100%; margin-top: 8px; }
-        .scan-btn { flex: 1; padding: 8px; border: none; border-radius: 6px; background: #2b6cb0; color: white; font-weight: bold; cursor: pointer; font-size: 11px; text-align: center; }
+        .scan-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; background: #2b6cb0; color: white; font-weight: bold; cursor: pointer; font-size: 12px; text-align: center; }
         .file-upload { display: none; }
         
-        #result { margin-top: 8px; padding: 10px; border-radius: 8px; background: white; width: 100%; box-sizing: border-box; min-height: 80px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 12px; text-align: left; overflow-y: auto; max-height: 120px; }
-        .valid { color: #27ae60; font-weight: bold; font-size: 15px; text-align: center; margin: 0 0 4px 0; }
-        .invalid { color: #c0392b; font-weight: bold; font-size: 15px; text-align: center; margin: 0 0 4px 0; }
-        .back-btn { margin-top: 8px; color: #4a5568; text-decoration: none; cursor: pointer; font-weight: bold; font-size: 12px; }
+        /* Removed max-height and scrolling to let it fit naturally */
+        #result { margin-top: 8px; padding: 12px; border-radius: 8px; background: white; width: 100%; box-sizing: border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 13px; text-align: left; }
+        .valid { color: #27ae60; font-weight: bold; font-size: 16px; text-align: center; margin: 0 0 6px 0; }
+        .invalid { color: #c0392b; font-weight: bold; font-size: 16px; text-align: center; margin: 0 0 6px 0; }
+        
+        .result-row { margin: 4px 0; display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+        .result-label { color: #666; font-weight: bold; }
+        .result-val { color: #111; font-weight: 600; text-align: right; }
+        
+        .back-btn { margin-top: 10px; color: #4a5568; text-decoration: none; cursor: pointer; font-weight: bold; font-size: 13px; padding: 5px; }
     </style>
 </head>
 <body>
@@ -61,7 +69,7 @@
   "kty": "EC",
   "x": "mlXQIEiXu_WCWFEozlGKdNKfdjYTPhg_IWKrdfqTKxg",
   "y": "dqFlXmUhlImXtabF7sS_rrOUvQ0AOksYhCSHULN0ArU"
-                           };
+};
 
     let stream = null; let scanning = false; let isProcessingFrame = false;
     const video = document.getElementById('preview'); const resultDiv = document.getElementById('result');
@@ -70,9 +78,8 @@
         document.getElementById('menuView').style.display = 'none';
         document.getElementById('scannerView').style.display = 'flex';
         document.getElementById('controlsBar').style.display = 'flex';
-        resultDiv.innerHTML = "Scanning for QR code..."; scanning = true;
+        resultDiv.innerHTML = "<div style='text-align:center;'>Scanning for QR code...</div>"; scanning = true;
 
-        // Graceful fallback if camera is blocked/unavailable
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } }).then(s => {
                 stream = s; video.srcObject = stream; requestAnimationFrame(tick);
@@ -103,7 +110,7 @@
 
     async function handleFileUpload(event) {
         const file = event.target.files[0]; if (!file) return;
-        resultDiv.innerHTML = "Processing uploaded file...";
+        resultDiv.innerHTML = "<div style='text-align:center;'>Processing uploaded file...</div>";
         try {
             if (file.type === "application/pdf") {
                 const arrayBuffer = await file.arrayBuffer(); const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -154,7 +161,7 @@
             const data = { name: payload.n, role: payload.r, email: payload.e, phone: payload.p, exp: payload.x };
             
             if (Date.now() > data.exp) {
-                resultDiv.innerHTML = `<p class="invalid">❌ ID EXPIRED</p><p><strong>${data.name}</strong></p><button class="big-btn" onclick="startScanner()">🔄 Scan Next</button>`; return;
+                resultDiv.innerHTML = `<p class="invalid">❌ ID EXPIRED</p><div style="text-align:center;"><strong>${data.name}</strong></div><button class="big-btn" onclick="startScanner()" style="margin-top:10px;">🔄 Scan Next</button>`; return;
             }
 
             const key = await window.crypto.subtle.importKey(
@@ -168,16 +175,16 @@
 
             if (isValid) {
                 resultDiv.innerHTML = `
-                    <p class="valid">✅ VERIFIED SECURE ID</p>
-                    <p style="margin:2px 0;"><strong>Name:</strong> ${data.name}</p>
-                    <p style="margin:2px 0;"><strong>Role:</strong> ${data.role}</p>
-                    <p style="margin:2px 0;"><strong>Email:</strong> ${data.email}</p>
-                    <p style="margin:2px 0;"><strong>Phone:</strong> ${data.phone}</p>
-                    <button class="big-btn" style="padding:6px; font-size:11px; margin-top:6px; width:100%;" onclick="startScanner()">🔄 Scan Next Badge</button>
+                    <p class="valid">✅ SECURE ID VERIFIED</p>
+                    <div class="result-row"><span class="result-label">Name:</span> <span class="result-val">${data.name}</span></div>
+                    <div class="result-row"><span class="result-label">Role:</span> <span class="result-val">${data.role}</span></div>
+                    <div class="result-row"><span class="result-label">Email:</span> <span class="result-val">${data.email}</span></div>
+                    <div class="result-row" style="border:none;"><span class="result-label">Phone:</span> <span class="result-val">${data.phone}</span></div>
+                    <button class="big-btn" style="padding:10px; margin-top:10px;" onclick="startScanner()">🔄 Scan Next Badge</button>
                 `;
             } else { throw new Error(); }
         } catch (e) {
-            resultDiv.innerHTML = `<p class="invalid">❌ Invalid/Fake Badge Format</p><button class="big-btn" style="padding:6px; font-size:11px; margin-top:8px;" onclick="startScanner()">🔄 Scan Next</button>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ Invalid/Fake Badge</p><button class="big-btn" style="padding:10px; margin-top:10px;" onclick="startScanner()">🔄 Scan Next</button>`;
         }
     }
 </script>
