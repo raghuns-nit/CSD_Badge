@@ -35,11 +35,11 @@
         .action-link { color: #007bff; font-weight: bold; text-decoration: none; margin-right: 8px; cursor: pointer; }
         .action-link.dl { color: #28a745; margin-right: 0; }
         
-        /* BIOMETRIC CAMERA CSS */
-        #cameraSection { display: none; text-align: center; background: #000; padding: 4px; border-radius: 6px; margin-top: 5px; }
+        /* CAMERA UI */
+        #cameraSection { display: none; text-align: center; background: #000; padding: 6px; border-radius: 6px; margin-top: 5px; }
         .camera-wrapper { width: 100%; height: 200px; display: flex; justify-content: center; align-items: center; overflow: hidden; position: relative; border-radius: 4px; }
         #cameraStream { width: 100%; height: 100%; object-fit: cover; }
-        #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; transition: box-shadow 0.3s ease; }
+        #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; transition: box-shadow 0.3s ease; display: none; }
         #scanStatus { position: absolute; bottom: 10px; left: 0; width: 100%; text-align: center; color: white; font-weight: bold; font-size: 13px; z-index: 15; text-shadow: 0px 2px 4px rgba(0,0,0,0.8); }
 
         .badge-preview { display: none; text-align: center; border: 1px solid #ddd; border-radius: 8px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-top: 5px; padding: 0; overflow: hidden; }
@@ -117,19 +117,36 @@
             
             <div style="display: flex; gap: 6px; align-items: center;">
                 <input type="hidden" id="photoData" value="">
-                <button type="button" onclick="startSmartCamera()" style="background: #17a2b8; margin: 0; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                    <span style="font-size: 14px;">📸</span> Start Biometric Scan
+                <button type="button" onclick="openCamera()" style="background: #17a2b8; margin: 0; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                    <span style="font-size: 14px;">📸</span> Open Camera
                 </button>
                 <input type="file" accept="image/*" onchange="handleImageFile(event)" style="padding: 4px; margin: 0; flex: 0.5;">
             </div>
 
             <div id="cameraSection">
-                <div class="camera-wrapper">
-                    <video id="cameraStream" autoplay playsinline muted></video>
-                    <canvas id="overlayCanvas"></canvas>
-                    <div id="scanStatus">Initializing ML Engine...</div>
+                
+                <div id="liveCameraView">
+                    <div class="camera-wrapper">
+                        <video id="cameraStream" autoplay playsinline muted></video>
+                        <canvas id="overlayCanvas"></canvas>
+                        <div id="scanStatus">Initializing...</div>
+                    </div>
+                    <div style="display: flex; gap: 6px; margin-top: 5px;">
+                        <button type="button" id="manualSnapBtn" onclick="takeSnapshot()" style="background: #28a745; display: none; flex: 1; margin: 0;">Snap</button>
+                        <button type="button" onclick="flipCamera()" style="background: #6c757d; flex: 1; margin: 0;">🔄 Flip Cam</button>
+                        <button type="button" onclick="stopCamera()" style="background: #dc3545; flex: 1; margin: 0;">Cancel</button>
+                    </div>
                 </div>
-                <button type="button" onclick="stopCamera()" style="background: #dc3545; margin-top: 5px;">Cancel Scan</button>
+
+                <div id="photoConfirmView" style="display: none; flex-direction: column; align-items: center; padding: 10px;">
+                    <p style="color: white; font-size: 13px; font-weight: bold; margin: 0 0 10px 0;">Preview Badge Photo</p>
+                    <img id="confirmPreview" src="" style="width: 150px; height: 150px; border-radius: 50%; border: 3px solid #00ffcc; margin-bottom: 15px; object-fit: cover; background: white;">
+                    <div style="display: flex; gap: 6px; width: 100%;">
+                        <button type="button" onclick="confirmPhoto()" style="background: #28a745; flex: 1; margin: 0; padding: 10px;">✅ Use This Photo</button>
+                        <button type="button" onclick="retakePhoto()" style="background: #ffc107; color: black; flex: 1; margin: 0; padding: 10px;">🔄 Retake</button>
+                    </div>
+                </div>
+
             </div>
             
             <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
@@ -162,9 +179,11 @@
     let mediaStream = null;
     let currentSignedJwt = "";
 
-    // BIOMETRIC STATE
+    // CAMERA & BIOMETRIC STATE
     let isModelsLoaded = false;
     let scanActive = false;
+    let currentFacingMode = "user"; // "user" = front cam, "environment" = back cam
+    let tempPhotoData = ""; // Holds the snapped image waiting for confirmation
 
     window.onload = () => {
         document.getElementById('ghOwner').value = localStorage.getItem('ghOwner') || '';
@@ -235,47 +254,74 @@
 
     async function getSigningKey() { return await window.crypto.subtle.importKey("jwk", JSON.parse(rawPrivateKeyJson), { name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]); }
 
-    // --- BIOMETRIC ENGINE LOGIC --- //
+    // --- GRACEFUL DEGRADATION CAMERA SYSTEM --- //
     
     async function initFaceAPI() {
-        if (isModelsLoaded) return;
+        if (typeof faceapi === 'undefined') return false; 
+        if (isModelsLoaded) return true;
+        
         const statusEl = document.getElementById('scanStatus');
         statusEl.innerText = "Loading Local ML Weights...";
+        
         try {
-            // Load the models from the local /models folder
+            // Pointing to your exact local GitHub repo folder
             await faceapi.nets.tinyFaceDetector.loadFromUri('/CSD_Badge/models');
             await faceapi.nets.faceLandmark68Net.loadFromUri('/CSD_Badge/models');
             isModelsLoaded = true;
+            return true;
         } catch (e) {
-            alert("Failed to load Face API models. Ensure the 'models' folder is pushed to GitHub.");
+            console.warn("AI Models failed to load. Gracefully degrading to Manual Capture mode.");
+            return false;
         }
     }
 
-    async function startSmartCamera() {
+    async function openCamera() {
+        // Reset UI state for live camera
         document.getElementById('cameraSection').style.display = 'block';
+        document.getElementById('liveCameraView').style.display = 'block';
+        document.getElementById('photoConfirmView').style.display = 'none';
+        
         const videoEl = document.getElementById('cameraStream');
         const statusEl = document.getElementById('scanStatus');
+        const manualBtn = document.getElementById('manualSnapBtn');
+        const canvasEl = document.getElementById('overlayCanvas');
         
-        await initFaceAPI();
-        statusEl.innerText = "Starting Camera...";
+        statusEl.innerText = "Checking Engine...";
+        manualBtn.style.display = 'none';
+        canvasEl.style.display = 'none';
         
+        const mlSuccess = await initFaceAPI();
+
         try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+            if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); // Stop old stream if open
+            mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode } });
             videoEl.srcObject = mediaStream;
 
             videoEl.onplay = () => {
-                const canvasEl = document.getElementById('overlayCanvas');
-                canvasEl.width = videoEl.videoWidth;
-                canvasEl.height = videoEl.videoHeight;
-                scanActive = true;
-                statusEl.innerText = "Align face in center...";
-                statusEl.style.color = "white";
-                scanLoop();
+                if (!mlSuccess) {
+                    statusEl.innerText = "Manual Mode (AI Blocked/Missing)";
+                    statusEl.style.color = "#ffc107";
+                    manualBtn.style.display = 'block';
+                } else {
+                    canvasEl.style.display = 'block';
+                    canvasEl.width = videoEl.videoWidth;
+                    canvasEl.height = videoEl.videoHeight;
+                    scanActive = true;
+                    statusEl.innerText = "Align face in center...";
+                    statusEl.style.color = "white";
+                    scanLoop();
+                }
             };
         } catch (err) {
             alert("Camera access denied or unavailable.");
-            document.getElementById('cameraSection').style.display = 'none';
+            stopCamera();
         }
+    }
+
+    function flipCamera() {
+        currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
+        scanActive = false;
+        openCamera();
     }
 
     function stopCamera() {
@@ -285,6 +331,44 @@
         document.getElementById('overlayCanvas').style.boxShadow = "none";
     }
 
+    // --- PHOTO CONFIRMATION LOGIC --- //
+
+    function displayConfirmation(dataUrl) {
+        scanActive = false; // Pause AI scanning
+        tempPhotoData = dataUrl;
+        
+        // Hide live video, show confirmation screen
+        document.getElementById('liveCameraView').style.display = 'none';
+        document.getElementById('confirmPreview').src = dataUrl;
+        document.getElementById('photoConfirmView').style.display = 'flex';
+    }
+
+    function confirmPhoto() {
+        document.getElementById('photoData').value = tempPhotoData;
+        stopCamera();
+    }
+
+    function retakePhoto() {
+        tempPhotoData = "";
+        openCamera(); // Restarts the feed and AI cleanly
+    }
+
+    // MANUAL SNAPSHOT (Triggered by button)
+    function takeSnapshot() {
+        const videoEl = document.getElementById('cameraStream');
+        const snapCanvas = document.createElement('canvas');
+        snapCanvas.width = 300; 
+        snapCanvas.height = 300;
+        
+        const minDim = Math.min(videoEl.videoWidth, videoEl.videoHeight);
+        const startX = (videoEl.videoWidth - minDim) / 2;
+        const startY = (videoEl.videoHeight - minDim) / 2;
+
+        snapCanvas.getContext('2d').drawImage(videoEl, startX, startY, minDim, minDim, 0, 0, 300, 300);
+        displayConfirmation(snapCanvas.toDataURL('image/jpeg', 0.8));
+    }
+
+    // SMART BIOMETRIC SNAPSHOT (Triggered by AI)
     async function scanLoop() {
         if (!scanActive) return;
         
@@ -293,7 +377,6 @@
         const statusEl = document.getElementById('scanStatus');
         const ctx = canvasEl.getContext('2d');
         
-        // ML Detect
         const detection = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
         ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
@@ -301,29 +384,23 @@
             const dims = faceapi.matchDimensions(canvasEl, videoEl, true);
             const resized = faceapi.resizeResults(detection, dims);
 
-            // Draw glowing cyan sci-fi grid
             faceapi.draw.drawFaceLandmarks(canvasEl, resized, { drawLines: true, color: '#00ffcc', lineWidth: 1.5 });
 
             const box = resized.detection.box;
-            const centerX = box.x + box.width / 2;
-            const centerY = box.y + box.height / 2;
-            
-            // Mathematical check: is the face centered and large enough?
-            const isCenteredX = Math.abs(centerX - canvasEl.width / 2) < canvasEl.width * 0.15;
-            const isCenteredY = Math.abs(centerY - canvasEl.height / 2) < canvasEl.height * 0.15;
+            const isCenteredX = Math.abs((box.x + box.width / 2) - canvasEl.width / 2) < canvasEl.width * 0.15;
+            const isCenteredY = Math.abs((box.y + box.height / 2) - canvasEl.height / 2) < canvasEl.height * 0.15;
             const isGoodSize = box.width > canvasEl.width * 0.25;
 
             if (isCenteredX && isCenteredY && isGoodSize) {
                 statusEl.innerText = "Target Locked. Capturing...";
                 statusEl.style.color = "#00ffcc";
                 canvasEl.style.boxShadow = "inset 0 0 40px #00ffcc";
-                
-                scanActive = false; // Halt loop
-                setTimeout(() => executeSmartCrop(box, videoEl), 700); // 700ms dramatic sci-fi pause
+                scanActive = false; 
+                setTimeout(() => executeSmartCrop(box, videoEl), 700); 
                 return;
             } else {
                 statusEl.innerText = "Center Face & Move Closer";
-                statusEl.style.color = "#ffc107"; // Warning Yellow
+                statusEl.style.color = "#ffc107"; 
                 canvasEl.style.boxShadow = "none";
             }
         } else {
@@ -336,28 +413,18 @@
     }
 
     function executeSmartCrop(box, videoEl) {
-        // Calculate a perfect square crop around the face with padding
-        const side = Math.max(box.width, box.height) * 1.6; // 60% padding
-        const cx = box.x + box.width / 2;
-        const cy = box.y + box.height / 2;
-
-        const cropX = cx - side / 2;
-        const cropY = cy - side / 2;
-
-        // Draw the exact slice to a high-res hidden canvas
+        const side = Math.max(box.width, box.height) * 1.6; 
         const snapCanvas = document.createElement('canvas');
-        snapCanvas.width = 300; 
-        snapCanvas.height = 300;
-        const sCtx = snapCanvas.getContext('2d');
-
-        sCtx.drawImage(videoEl, cropX, cropY, side, side, 0, 0, 300, 300);
-
-        document.getElementById('photoData').value = snapCanvas.toDataURL('image/jpeg', 0.8);
+        snapCanvas.width = 300; snapCanvas.height = 300;
         
-        // Provide visual feedback before closing
-        document.getElementById('scanStatus').innerText = "Capture Successful!";
-        setTimeout(() => stopCamera(), 500);
+        snapCanvas.getContext('2d').drawImage(
+            videoEl, 
+            (box.x + box.width / 2) - side / 2, (box.y + box.height / 2) - side / 2, side, side, 
+            0, 0, 300, 300
+        );
+        displayConfirmation(snapCanvas.toDataURL('image/jpeg', 0.8));
     }
+
 
     // --- STANDARD LOGIC --- //
 
@@ -366,7 +433,11 @@
         reader.onload = (e) => {
             const img = new Image(); img.onload = () => {
                 const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 300;
-                canvas.getContext('2d').drawImage(img, 0, 0, 300, 300); // Center-crop math could go here for uploads, but standard scale is fine for now
+                const minDim = Math.min(img.width, img.height);
+                const startX = (img.width - minDim) / 2;
+                const startY = (img.height - minDim) / 2;
+                
+                canvas.getContext('2d').drawImage(img, startX, startY, minDim, minDim, 0, 0, 300, 300);
                 document.getElementById('photoData').value = canvas.toDataURL('image/jpeg', 0.8);
             }; img.src = e.target.result;
         }; reader.readAsDataURL(event.target.files[0]);
