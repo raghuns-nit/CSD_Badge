@@ -12,21 +12,22 @@
         .header { background: #1a365d; color: white; padding: 12px; font-size: 16px; font-weight: bold; flex-shrink: 0; }
         .content { flex: 1; padding: 10px; display: flex; flex-direction: column; justify-content: center; align-items: center; box-sizing: border-box; width: 100%; }
         
-        #menuView { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 300px; }
+        #menuView, #optionsView { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 300px; }
+        #optionsView { display: none; }
+        
         .big-btn { background: #3182ce; color: white; border: none; padding: 15px; border-radius: 10px; font-size: 15px; cursor: pointer; font-weight: bold; text-decoration: none; display: block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box; }
         .big-btn.admin { background: #4a5568; }
+        .big-btn.upload { background: #28a745; text-align: center; }
         
         #scannerView { display: none; width: 100%; max-width: 380px; flex-direction: column; align-items: center; }
         
-        /* Camera responsive to fit standard phones without pushing content down */
         .camera-container { width: 100%; max-height: 40vh; aspect-ratio: 4/3; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         video { width: 100%; height: 100%; object-fit: cover; }
 
         .scan-controls { display: flex; gap: 6px; width: 100%; margin-top: 8px; }
-        .scan-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; background: #2b6cb0; color: white; font-weight: bold; cursor: pointer; font-size: 12px; text-align: center; }
+        .scan-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; background: #4a5568; color: white; font-weight: bold; cursor: pointer; font-size: 12px; text-align: center; }
         .file-upload { display: none; }
         
-        /* Removed max-height and scrolling to let it fit naturally */
         #result { margin-top: 8px; padding: 12px; border-radius: 8px; background: white; width: 100%; box-sizing: border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 13px; text-align: left; }
         .valid { color: #27ae60; font-weight: bold; font-size: 16px; text-align: center; margin: 0 0 6px 0; }
         .invalid { color: #c0392b; font-weight: bold; font-size: 16px; text-align: center; margin: 0 0 6px 0; }
@@ -42,20 +43,34 @@
 
 <div class="header">Team ID Portal</div>
 <div class="content">
+    
     <div id="menuView">
-        <button class="big-btn" onclick="startScanner()">🔍 Verify Badge</button>
+        <button class="big-btn" onclick="showOptions()">🔍 Verify Badge</button>
         <a href="admin.html" class="big-btn admin">⚙️ Admin Portal</a>
     </div>
 
-    <div id="scannerView">
-        <div class="camera-container"><video id="preview" autoplay playsinline muted></video></div>
-        <div class="scan-controls" id="controlsBar">
-            <button class="scan-btn" onclick="captureManualFrame()" id="readFrameBtn">📸 Read Frame</button>
-            <label class="scan-btn" style="background: #4a5568; line-height: 20px;">📁 Upload Img/PDF<input type="file" class="file-upload" accept="image/*,application/pdf" onchange="handleFileUpload(event)"></label>
-        </div>
-        <div id="result">Point camera at QR code or upload Badge file...</div>
-        <div class="back-btn" onclick="stopScanner()">← Back to Menu</div>
+    <div id="optionsView">
+        <button class="big-btn" onclick="startScanner()">📸 Scan with Camera</button>
+        <label class="big-btn upload">
+            📁 Upload Img / PDF
+            <input type="file" class="file-upload" accept="image/*,application/pdf" onchange="handleFileUpload(event)">
+        </label>
+        <div class="back-btn" onclick="backToMenu()">← Back to Home</div>
     </div>
+
+    <div id="scannerView">
+        <div class="camera-container" id="cameraContainer">
+            <video id="preview" autoplay playsinline muted></video>
+        </div>
+        
+        <div class="scan-controls" id="controlsBar">
+            <button class="scan-btn" onclick="captureManualFrame()" id="readFrameBtn">📸 Force Manual Read</button>
+        </div>
+        
+        <div id="result"></div>
+        <div class="back-btn" onclick="showOptions()">← Back</div>
+    </div>
+
 </div>
 
 <script>
@@ -69,33 +84,52 @@
   "kty": "EC",
   "x": "mlXQIEiXu_WCWFEozlGKdNKfdjYTPhg_IWKrdfqTKxg",
   "y": "dqFlXmUhlImXtabF7sS_rrOUvQ0AOksYhCSHULN0ArU"
-};
+                           };
 
-    let stream = null; let scanning = false; let isProcessingFrame = false;
-    const video = document.getElementById('preview'); const resultDiv = document.getElementById('result');
+    let stream = null; 
+    let scanning = false; 
+    let isProcessingFrame = false;
+    const video = document.getElementById('preview'); 
+    const resultDiv = document.getElementById('result');
 
-    function startScanner() {
+    // UI Routing
+    function showOptions() {
+        stopScanner(); // Failsafe to shut off camera if returning
         document.getElementById('menuView').style.display = 'none';
+        document.getElementById('scannerView').style.display = 'none';
+        document.getElementById('optionsView').style.display = 'flex';
+    }
+
+    function backToMenu() {
+        document.getElementById('optionsView').style.display = 'none';
+        document.getElementById('menuView').style.display = 'flex';
+    }
+
+    // Activated only if user explicitly selects Camera
+    function startScanner() {
+        document.getElementById('optionsView').style.display = 'none';
         document.getElementById('scannerView').style.display = 'flex';
+        document.getElementById('cameraContainer').style.display = 'flex';
         document.getElementById('controlsBar').style.display = 'flex';
-        resultDiv.innerHTML = "<div style='text-align:center;'>Scanning for QR code...</div>"; scanning = true;
+        resultDiv.innerHTML = "<div style='text-align:center;'>Scanning for QR code...</div>"; 
+        scanning = true;
 
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } }).then(s => {
                 stream = s; video.srcObject = stream; requestAnimationFrame(tick);
             }).catch(err => { 
-                resultDiv.innerHTML = `<p class="invalid">Camera unavailable. Please use the Upload button.</p>`; 
-                document.getElementById('readFrameBtn').style.display = 'none';
+                resultDiv.innerHTML = `<p class="invalid">Camera unavailable. Please go back and Upload.</p>`; 
+                document.getElementById('controlsBar').style.display = 'none';
             });
         } else {
-            resultDiv.innerHTML = `<p class="invalid">Camera API blocked. Please use the Upload button.</p>`;
-            document.getElementById('readFrameBtn').style.display = 'none';
+            resultDiv.innerHTML = `<p class="invalid">Camera API blocked. Please go back and Upload.</p>`;
+            document.getElementById('controlsBar').style.display = 'none';
         }
     }
 
     function stopScanner() {
-        scanning = false; if (stream) stream.getTracks().forEach(t => t.stop());
-        document.getElementById('scannerView').style.display = 'none'; document.getElementById('menuView').style.display = 'flex';
+        scanning = false; 
+        if (stream) stream.getTracks().forEach(t => t.stop());
     }
 
     async function tick() {
@@ -108,25 +142,46 @@
 
     function captureManualFrame() { processImageSource(video, true); }
 
+    // Activated if user selects File Upload
     async function handleFileUpload(event) {
-        const file = event.target.files[0]; if (!file) return;
+        const file = event.target.files[0]; 
+        if (!file) return;
+        
+        // Prep UI for processing, skip turning on camera
+        document.getElementById('optionsView').style.display = 'none';
+        document.getElementById('scannerView').style.display = 'flex';
+        document.getElementById('cameraContainer').style.display = 'none';
+        document.getElementById('controlsBar').style.display = 'none';
+        
         resultDiv.innerHTML = "<div style='text-align:center;'>Processing uploaded file...</div>";
+        
         try {
             if (file.type === "application/pdf") {
-                const arrayBuffer = await file.arrayBuffer(); const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                const page = await pdf.getPage(1); const viewport = page.getViewport({ scale: 2.5 });
-                const canvas = document.createElement('canvas'); canvas.width = viewport.width; canvas.height = viewport.height;
+                const arrayBuffer = await file.arrayBuffer(); 
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const page = await pdf.getPage(1); 
+                const viewport = page.getViewport({ scale: 2.5 });
+                const canvas = document.createElement('canvas'); 
+                canvas.width = viewport.width; canvas.height = viewport.height;
+                
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
                 await processImageSource(canvas, true);
             } else {
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    const img = new Image(); img.onload = async () => await processImageSource(img, true); img.src = e.target.result;
-                }; reader.readAsDataURL(file);
+                    const img = new Image(); 
+                    img.onload = async () => await processImageSource(img, true); 
+                    img.src = e.target.result;
+                }; 
+                reader.readAsDataURL(file);
             }
-        } catch (err) { resultDiv.innerHTML = `<p class="invalid">❌ Error processing file.</p>`; }
+        } catch (err) { 
+            resultDiv.innerHTML = `<p class="invalid">❌ Error processing file.</p>`; 
+        }
+        event.target.value = ''; // Reset input so same file can be clicked again
     }
 
+    // Universal Processing Engine
     async function processImageSource(source, isManual = false) {
         if (!isManual && !scanning) return;
         
@@ -139,19 +194,26 @@
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = source.videoWidth || source.width || 800; canvas.height = source.videoHeight || source.height || 800;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        canvas.width = source.videoWidth || source.width || 800; 
+        canvas.height = source.videoHeight || source.height || 800;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true }); 
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
         
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
 
-        if (code) { handleQRResult(code.data); } 
-        else if (isManual) { resultDiv.innerHTML = `<p class="invalid">❌ No QR code found.</p>`; }
+        if (code) { 
+            handleQRResult(code.data); 
+        } else if (isManual) { 
+            resultDiv.innerHTML = `<p class="invalid">❌ No QR code found.</p><button class="big-btn" style="margin-top:10px;" onclick="showOptions()">🔄 Try Again</button>`; 
+        }
     }
 
     function handleQRResult(jwtString) {
-        scanning = false; if (stream) stream.getTracks().forEach(t => t.stop());
-        document.getElementById('controlsBar').style.display = 'none'; verifyToken(jwtString);
+        stopScanner();
+        document.getElementById('controlsBar').style.display = 'none';
+        document.getElementById('cameraContainer').style.display = 'none'; // Hide feed on success
+        verifyToken(jwtString);
     }
 
     async function verifyToken(jwtString) {
@@ -161,12 +223,14 @@
             const data = { name: payload.n, role: payload.r, email: payload.e, phone: payload.p, exp: payload.x };
             
             if (Date.now() > data.exp) {
-                resultDiv.innerHTML = `<p class="invalid">❌ ID EXPIRED</p><div style="text-align:center;"><strong>${data.name}</strong></div><button class="big-btn" onclick="startScanner()" style="margin-top:10px;">🔄 Scan Next</button>`; return;
+                resultDiv.innerHTML = `<p class="invalid">❌ ID EXPIRED</p><div style="text-align:center; margin-bottom:10px;"><strong>${data.name}</strong></div><button class="big-btn" onclick="showOptions()">🔄 Verify Another</button>`; 
+                return;
             }
 
             const key = await window.crypto.subtle.importKey(
                 "jwk", PUBLIC_KEY_JWK, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]
             );
+            
             const isValid = await window.crypto.subtle.verify(
                 { name: "ECDSA", hash: { name: "SHA-256" } }, key, 
                 Uint8Array.from(atob(parts[2].replace(/_/g, '/').replace(/-/g, '+')), c => c.charCodeAt(0)), 
@@ -180,11 +244,11 @@
                     <div class="result-row"><span class="result-label">Role:</span> <span class="result-val">${data.role}</span></div>
                     <div class="result-row"><span class="result-label">Email:</span> <span class="result-val">${data.email}</span></div>
                     <div class="result-row" style="border:none;"><span class="result-label">Phone:</span> <span class="result-val">${data.phone}</span></div>
-                    <button class="big-btn" style="padding:10px; margin-top:10px;" onclick="startScanner()">🔄 Scan Next Badge</button>
+                    <button class="big-btn" style="padding:10px; margin-top:15px;" onclick="showOptions()">🔄 Verify Another Badge</button>
                 `;
             } else { throw new Error(); }
         } catch (e) {
-            resultDiv.innerHTML = `<p class="invalid">❌ Invalid/Fake Badge</p><button class="big-btn" style="padding:10px; margin-top:10px;" onclick="startScanner()">🔄 Scan Next</button>`;
+            resultDiv.innerHTML = `<p class="invalid">❌ Invalid/Fake Badge</p><button class="big-btn" style="padding:10px; margin-top:10px;" onclick="showOptions()">🔄 Try Again</button>`;
         }
     }
 </script>
